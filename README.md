@@ -1,1 +1,1 @@
-"# grupa_ads" 
+# Repozytorium Grupy Roboczej PSA Actuarial Data Science
