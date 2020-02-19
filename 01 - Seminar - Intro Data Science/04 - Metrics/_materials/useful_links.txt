@@ -1,0 +1,5 @@
+https://scikit-learn.org/stable/modules/model_evaluation.html
+https://towardsdatascience.com/20-popular-machine-learning-metrics-part-1-classification-regression-evaluation-metrics-1ca3e282a2ce
+https://machinelearningmastery.com/metrics-evaluate-machine-learning-algorithms-python/
+
+https://tryolabs.com/blog/2013/03/25/why-accuracy-alone-bad-measure-classification-tasks-and-what-we-can-do-about-it/
