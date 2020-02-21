@@ -1,0 +1,299 @@
+---
+title: "Regularyzacja"
+subtitle: Grupa Robocza Data Science PSA
+author: Kamil Kuźmicki
+output:
+  html_document:
+    df_print: paged
+  html_notebook: default
+  word_document: default
+  pdf_document: default
+---
+
+```{r, echo=FALSE}
+library(glmnet)
+library(mlbench)
+
+# Loading the data
+data(BostonHousing)
+my.dataset <- BostonHousing
+
+n <- nrow(my.dataset)
+test.n <- round(n/10,0)
+set.seed(1)
+test.l <- sample(1:n, test.n)
+train.l <- setdiff(1:n, test.l)
+
+
+my.dataset.test <- my.dataset[test.l, ]
+my.dataset.train <- my.dataset[train.l, ]
+
+
+x.train <- model.matrix(medv~.,my.dataset.train)[,-1]
+y.train <- as.matrix((my.dataset.train$medv))
+x.test <- model.matrix(medv~.,my.dataset.test)[,-1]
+y.test <- as.matrix((my.dataset.test$medv))
+
+lbs_fun <- function(fit, ...) {
+  L <- length(fit$lambda)
+  x <- log(fit$lambda[L])
+  y <- fit$beta[, L]
+  labs <- names(y)
+  # text(x, y, labels=labs, ...)
+  legend('bottomright', legend=labs, col=1:length(labs), lty=1)
+}
+
+
+```
+
+## Wstęp
+
+Zakładamy, że poruszamy się w świecie machine learningu i mamy postawiony pewien problem do rozwiązania, np. klasyfikacja lub predykcja.
+
+**Regularyzacja jest to wprowadzenie do danego problemu dodatkowego założenia lub ograniczenia uwzględnianego przy szukaniu optymalnych parametrów.** 
+
+Z reguły stosujemy ją w przypadku kiedy:
+
+1. problem jest źle postawiony, czyli np. mamy więcej zmiennych objaśniających niż obserwacji
+2. chcemy ograniczyć zjawisko overfitting-u.
+
+Zastosowanie regularyzacji pozwala nam też uzyskaą pewne dodatkowe informacje na temat istotności zmiennych lub ich zależności między sobą. 
+
+## Przykłady
+
+### Przykład 1
+
+Rozważmy standardowy problem regresji liniowej $Y \sim X$, gdzie  $n$ to liczba obserwacji a $p$ to liczba zmiennych objaśniających.
+
+Jeśli $n\geq p$, to znamy rozwiązanie tego problemu, :
+$$\widehat{\beta}=(X^{T}X)^{-1}X^{T}Y$$
+
+Ten sam wzór otrzymamy stosując oczywiście metodę największej wiarogodności.
+
+Jeśli $n<p$, to $(X^{T}X)^{-1}$ to nie istnieje i nie istnieje też zatem jednoznaczne rozwiązanie wskazane powyżej. Oznacza to, że musimy zmodyfikować postawiony problem, np. ograniczając zbiór potencjalnych parametrów, aby mieć szansę na znalezienie rozwiązania.
+
+### Przykład 2
+
+Ponownie badamy zależność $Y$ od $X$ i rozważamy trzy modele liniowe, które są kolejno coraz bardziej skomplikowane:
+
+* pierwszy (<span style="color: red;">czerwony</span>) to prosta liniowa zależność $y$ od $x$, 
+* drugi (<span style="color: green;">zielony</span>) to wprowadzenie dodatkowej zmiennej objaśniającej równej $x^2$
+* trzeci (<span style="color: blue;">niebieski</span>) wprowadza dodatkowo $x^3, x^4, \ldots x^{10}$.
+
+Na wykresie poniżej znajdziemy predykcję dla każdego z tych modeli.
+
+```{r, echo=FALSE}
+set.seed(10)
+x <- seq(1:20)
+ax <- (x/5)^2 - 4* (x/5) + 3 
+y <- ax + rnorm(20, 1, 0.5)
+data <- data.frame(y,x)
+
+plot(y, pch = 16, xlab = "x", ylab = "y")
+model1 <- lm(y ~ x, data = data)
+lines(x = x, y = predict(model1, data), col = 2, pch = 16)
+model2 <- lm(y ~ I(x^2) + x, data = data)
+lines(x = x, y = predict(model2, data), col = 3, pch = 16)
+model3 <- lm(y~ I(x^10) + I(x^9) + I(x^8) + I(x^7) + I(x^6) + I(x^5) + I(x^4) + I(x^3) + I(x^2) + x, data = data)
+lines(x = x, y = predict(model3, data), col = 4, pch = 16)
+```
+
+1. Pierwszy model (<span style="color: red;">czerwony</span>) faktycznie słabo łapie zależności między $y$ a $x$, co sugeruje, że ma zbyt prostą strukturę. 
+
+2. Okazuje się też, że w modelu najbardziej skomplikowanym (<span style="color: blue;">niebieskim</span>) wydaje się, że może zachodzić zjawisko overfittingu. 
+
+3. Model środkowy (<span style="color: green;">zielony</span>) wydaje się najbardziej rozsądnym podejściem.
+
+**W jaki sposób "skłonić" algorytm wyszukujący optymalne parametry, aby preferował takie właśnie rozwiązania, które nie są zbyt skomplikowane?**
+
+
+## Więcej intuicji
+
+<center>
+
+**Brzytwa Ockhama** (nazywana także zasadą ekonomii lub zasadą ekonomii myślenia) to zasada, zgodnie z którą w wyjaśnianiu zjawisk należy dążyć do prostoty, wybierając takie wyjaśnienia, które opierają się na jak najmniejszej liczbie założeń i pojęć.
+
+</center>
+
+
+Regularyzacja pomaga zastosować tę regułę. Dodajemy dodatkowy warunek na estymowane parametry, tak, aby mieć pewność, że są one zgodne z naszymi oczekiwaniami, że dobry model jest *prosty*.
+
+**Intuicyjnie: Im model prostszy, tym większa szansa na możliwość jego generalizacji. 
+Im model bardziej skomplikowany, tym większa szansa, że jest on za bardzo dopasowany do danych treningowych.**
+
+Jak mierzyć stopień skomplikowania modelu?
+
+## Funkcja kosztu
+
+Rozważmy próbkę $N$ obserwacji, z których każda ma $p$ zmiennych objaśniających i jedną zmienną objaśnianą. Niech $y_{i}$ będzie zmienna objaśnianą i $x_{i} = (x_{i,1},x_{i,2},\ldots ,x_{i,p})^{T}$ będą zmiennymi objaśniającymi. 
+
+Problem poszukiwania optymalnych parametrów $\widehat{\beta}$ można sprowadzić do poszukiwania $\beta _{0},\beta$ minimalizujących
+$$\sum _{i=1}^{N}(y_{i}-\beta _{0}-x_{i}^{T}\beta )^{2}.$$
+Jest to tzw. metoda najmniejszych kwadratów.
+
+Powyższe wyrażenie możemy zapisać jako funkcję kosztu $J(x, y, \beta _{0},\beta)$ związaną z tymi parametrami oraz z danymi $x$ i $y$:
+
+$$J(x, y, \beta _{0},\beta) = \sum _{i=1}^{N}(y_{i}-\beta _{0}-x_{i}^{T}\beta )^{2}.$$
+W tym kontekście, problem regresji liniowej to poszukiwanie optymalnych parametrów $\beta _{0},\beta$ minimalizujących wartości funkcji kosztu. W standardowym modelu nie wprowadzamy dodatkowych ograniczeń na $\beta _{0},\beta$.
+
+
+## Regularyzacja
+
+Regularyzację można wprowadzić za pomocą wprowadzenia dodatkowych warunków przy poszukiwaniu tych parametrów na dwa sposoby:
+
+1. Minimalizujemy koszt $J(x, y, \beta _{0},\beta)$, dla pewnego ograniczonego podzbioru $\beta _{0},\beta$ (zamiast dla dowolnych)
+
+2. Minimalizujemy koszt $J(x, y, \beta _{0},\beta) + f(\beta _{0},\beta)$, gdzie $f(\beta _{0},\beta)$ oznacza dodatkowy koszt dla parametrów $\beta _{0},\beta$.
+
+Przykładem funkcji może być $f(\beta _{0},\beta) = \lambda \sum_{i=0}^{p}|{\beta _{i}}|$ i jest to wtedy tzw. regularyzacja Lasso.
+
+
+## Metody
+
+W poniższych analizach wykorzystam zbiór danych BostonHousing (https://www.kaggle.com/c/boston-housing). Zbiór zawiera informację o cenach domów wraz z zestawem parametrów opisujących daną nieruchomość. Zadaniem jest estymacja ceny domu na podstawie dostępnych informacji.
+
+
+#### R
+
+W R podstawowe techniki regularyzacji w ramach modelu liniowego można zastosować używając funkcji *glmnet* z pakietu *glmnet*.
+
+Składnia:
+
+<center>
+**glmnet***(x, y, family = "gaussian", lambda = NULL, alpha = 1, ...)*
+
+</center>
+
+* Szczegóły: https://www.rdocumentation.org/packages/glmnet/versions/3.0-2/topics/glmnet
+
+* W przypadku nie wybrania $\lambda$, funkcja *glmnet* zwróci wyniki dla zestawu $\lambda$.
+
+#### Python 
+
+W Python można wykorzystać klasę *Elastic Net* z pakietu *sklearn.linear_model*.
+
+Składnia:
+
+<center>
+*class* sklearn.linear_model.**ElasticNet***(alpha=1.0, l1_ratio=0.5,  ...)*
+
+</center>
+
+* Szczegóły: https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.ElasticNet.html
+
+* Porównanie do R: zmienna *alpha* odpowiada *lambda* , a *l1_ratio* odpowiada *alpha*.
+
+### Lasso
+
+W porównaniu do metody najmniejszych kwadratów wprowadzamy ograniczenie na parametry. $$\sum_{i=0}^{p}|{\beta _{i}}| < \alpha.$$
+Dla pewnego $\lambda > 0$, taki problem jest równoważny do poszukiwania $\beta _{0},\beta$ minimalizujących
+$$J(x, y, \beta _{0},\beta) + \lambda \sum_{i=0}^{p}|{\beta _{i}}|.$$
+
+*(Przypomnienie: $J(x, y, \beta _{0},\beta)$ to podstawowa funkcja kary dla modelu liniowego.)*
+
+Kod R:
+
+
+```{r}
+ALPHA = 1
+
+fit <- glmnet(x.train, y.train, family = "gaussian", alpha = ALPHA)
+
+plot(fit, xvar = "lambda", col = 1:dim(coef(fit))[1])
+
+lbs_fun(fit)
+
+```
+
+* Im $\lambda$ jest większe, tym bardziej znacząca jest "kara" związana z $\sum_{i=0}^{p}|{\beta _{i}}|$, co prowadzi do coraz mniejszych wartości parametrów.
+* Algorytm preferuje takie $\beta$, że niektóre z nich są równe 0
+* W przypadku jeśli niektóre zmienne objaśniające są bardzo podobne lub mocno skorelowane nie ma jednoznaczoności (koszt dla $(0,\beta_i)$ jest taki sam co dla $(\frac{\beta_i}{2}, \frac{\beta_i}{2})$)
+
+
+### Ridge
+
+W porównaniu do metody najmniejszych kwadratów wprowadźmy ograniczenie na parametry. $$\sum_{i=0}^{p}|{\beta _{i}}|^2 < \alpha.$$
+Dla pewnego $\lambda > 0 $, taki problem jest równoważny do poszukiwania $\beta _{0},\beta$ minimalizujących
+$$J(x, y, \beta _{0},\beta) + \lambda \sum_{i=0}^{p}|{\beta _{i}}|^2.$$
+
+Kod R:
+
+```{r}
+ALPHA = 0
+
+fit <- glmnet(x = x.train, y = y.train, family = "gaussian", alpha = ALPHA)
+
+plot(fit, xvar = "lambda", col = 1:dim(coef(fit))[1])
+
+lbs_fun(fit) # funkcja poprawiająca wykres
+
+```
+
+
+* Im $\lambda$ jest większe, tym bardziej znacząca jest "kara" związana z $\sum_{i=0}^{p}|{\beta _{i}}|^2$, co prowadzi do coraz mniejszych wartości parametrów. Odbywa się to jednak "wolniej" niż dla Lasso
+* W przeciwieństwie do Lasso, algorytm zwykle zwraca $\beta$ różne od $0$
+* W przypadku jeśli niektóre zmienne objaśniające są bardzo podobne lub mocno skorelowane, algorytm przeprowadza "grupowanie zmiennych" i wybiera taki zestaw parametrów, gdzie podobne lub mocno skorelowane zmienne objaśniające mają ten sam parametr 
+
+
+
+
+
+### Elastic net
+
+W porównaniu do metody najmniejszych kwadratów wprowadzamy ograniczenie na parametry. $$\sum_{i=0}^{p}(\theta|{\beta _{i}}|+(1-\theta)|{\beta _{i}}|^2) < \alpha.$$
+Dla pewnego $\lambda > 0$, taki problem jest równoważny do poszukiwania $\beta _{0},\beta$ minimalizujących
+$$J(x, y, \beta _{0},\beta) + \lambda \sum_{i=0}^{p}(\theta|{\beta _{i}}|+(1-\theta)|{\beta _{i}}|^2).$$
+Kod R:
+
+```{r}
+ALPHA = 0.3 # przykładowo, może to być dowolna liczba z przedziału [0, 1]
+
+fit <- glmnet(x = x.train, y = y.train, family = "gaussian", alpha = ALPHA)
+
+plot(fit, xvar = "lambda", col = 1:dim(coef(fit))[1])
+
+lbs_fun(fit) # funkcja poprawiająca wykres
+
+```
+
+
+* Jest to rozwiązanie pomiędzy Lasso i Ridge regression
+* Pozwala na grupowanie zmiennych, ale również na "zerowanie" parametrów przy niektórych zmiennych
+
+
+## Uwagi końcowe
+
+* Regularyzacja jest często dobrym pomysłem w sytuacji, gdy mamy dużo zmiennych objaśniających, z których każda stopniowo dostarcza dodatkowych informacji lub kiedy potrzebujemy ocenić jakie zmienne są potencjalnie istotne a jakie nie.
+
+* Powyższe metody można łatwo ugólnić na bardziej skomplikowane modele takie jak regresja logistyczna, GLM.
+
+* Hiperparametry $\lambda, \theta$ można dobrać korzystając z techniki cross-walidacji
+
+* Przed uruchomieniem powyższych algorytmów zwykle normalizuje się zmienne objaśniające (czyli zapewnia, że wszystkie mają taki sam zakres i średnią). Pozwoli to uniknąć nierównowagi między parametrami oraz poprawia zbieżność algorytmów optymalizujących. W praktyce wystarczy upewnić się, że jest zaznaczona ta opcja przy wywoływaniu funkcji.
+
+* *Ciekawostka*: Metody Lasso, Ridge, czy Elastic Net to tak naprawdę założenie, że parametry są również zmiennymi losowymi z pewnego rozkładu a priori (podejście Bayesowskie). 
+
+* *Ciekawostka*: Metody szukania optymalnego zestawu zmienny oparte o AIC i BIC są również metodami opartymi o regularyzację. Wprowadza się w nich pewne ograniczenie na liczbę parametrów, ale wciąż jest to funkcja postaci $f(\beta _{0},\beta)$.
+
+
+## Literatura
+
+Regression Shrinkage and Selection via the Lasso, Robert Tibshirani, Journal of the Royal Statistical Society. Series B (Methodological), Vol. 58, No. 1 (1996), pp. 267-288
+
+https://www.coursera.org/learn/machine-learning/home/welcome
+
+https://en.wikipedia.org/wiki/Regularization_(mathematics)
+
+https://en.wikipedia.org/wiki/Lasso_(statistics)
+
+https://en.wikipedia.org/wiki/Linear_regression
+
+http://www.science.smith.edu/~jcrouser/SDS293/labs/lab10-r.html
+
+https://cran.r-project.org/web/packages/glmnet/glmnet.pdf
+
+https://web.stanford.edu/~hastie/StatLearnSparsity_files/SLS.pdf
+
+https://www.rstatisticsblog.com/data-science-in-action/lasso-regression/
+
+https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.ElasticNet.html
