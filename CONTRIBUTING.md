@@ -11,7 +11,7 @@ git clone https://github.com/dawidkopczyk/grupa_ads.git
 ### Contribute
 1. Do changes
 
-2. Commit changes
+2. Commit changes (make sure you are in the right folder grupa_ads)
 ```
 git add .
 git commit -m some_name
