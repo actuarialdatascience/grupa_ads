@@ -1,0 +1,27 @@
+---
+title: "GLM useful materials"
+author: "Marcin Filip"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+***
+  
+-- *Applied Linear Statistical Models*, Michael H. Kutner, Christopher J. Nachtsheim, John Neter, William Li, 2005;
+  
+-- Prezentacja *Introduction to Generalized Linear Models*, Heather Turner, 2008;  
+  
+-- *Hands-on Machine Learning with R*, Bradley Boehmke, Brandon Greenwell, 2020;  
+  
+-- *A Practitioner's Guide to Generalized Linear Models*, Duncan Anderson, Sholom Feldblum, Claudine Modlin, Doris Schirmacher, Ernesto Schirmacher, Neeza Thandi, 2007;  
+  
+-- Kurs *Statistics for Applications*, Philippe Rigollet MIT, 2016, <https://www.youtube.com/watch?v=X-ix97pw0xY>;  
+  
+Dyskusje na forach:  
+  
+  -- <https://stats.stackexchange.com/questions/40876/what-is-the-difference-between-a-link-function-and-a-canonical-link-function>  
+  
+  -- <https://stats.stackexchange.com/questions/20523/difference-between-logit-and-probit-models#30909>  
