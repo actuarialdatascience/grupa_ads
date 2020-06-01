@@ -1,1 +1,2 @@
-Presentation files.
+title: 'Boosting'
+author: Tomasz Konieczny
