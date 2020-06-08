@@ -11,8 +11,6 @@ _Mario V. Wuethrich_ Neural Networks Applied to Chain-Ladder Reserving https://l
 
 _Greg Taylor_ Loss Reserving Models: Granular and Machine Learning Forms https://www.mdpi.com/2227-9091/7/3/82/pdf
 
-_Mario V. Wuthrich_ Neural Networks Applied to Chain-Ladder Reserving https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2966126
-
 _ASTIN WORKING PARTY_ Machine Learning and Traditional Methods Synergy in Non-Life Reserving https://www.actuaries.org/IAA/Documents/ASTIN/ASTIN_MLTMS%20Report_SJAMAL.pdf
 
 _Mario V. Wuthrich_ Machine Learning in Individual Claims Reserving https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2867897
@@ -30,8 +28,6 @@ _ASTIN 2017_ Individual Claim Development with Machine Learning https://www.actu
 _Mathieu Pigeon, Francis Duval_ Individual Loss Reserving Using a Gradient Boosting-Based Approach https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=&ved=2ahUKEwjp06b77PLpAhVriIsKHaeBDYkQFjACegQIBRAB&url=https%3A%2F%2Fwww.mdpi.com%2F2227-9091%2F7%2F3%2F79%2Fpdf&usg=AOvVaw3zXVsxjQpUxV423uxUq3q9
 
 _Maximilien Baudry  Christian Y. Robert_ A machine learning approach for individual claims reserving in insurance https://onlinelibrary.wiley.com/doi/abs/10.1002/asmb.2455
-
-_Marco Aleandri_ Case Reserving in Non-Life Practice using Individual Data and Machine Learning https://www.actuaries.org.uk/system/files/field/document/A7_Marco%20Aleandri_0.pdf
 
 _Olivier Lopez, Xavier Milhaud, Pierre-Emmanuel Thérond_ A tree-based algorithm adapted to microlevel reserving and long development claims - https://hal.archives-ouvertes.fr/hal-01868744/document
 
