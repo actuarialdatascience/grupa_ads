@@ -1,0 +1,305 @@
+---
+title: "Wprowadzenie do Uogólnionych Modeli Liniowych"
+author: "Marcin Filip"
+date: "23 March 2020"
+output:
+  slidy_presentation: 
+    highlight: kate
+    font_adjustment: -1
+    css: styles.css
+    footer: "Copyright Actuarial Data Science Working Group Polish Society of Actuaries, 2020"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(ISLR)
+library(tidyverse) # it consist of ggplot2, dplyr, tibble, tidyr and many other packagess
+library(caret)
+library(AmesHousing)
+library(rsample)
+library(vip)      # Model interpretability packages
+library(gridExtra)
+
+p1 <- ISLR::Default %>%
+  mutate(prob = ifelse(default == "Yes", 1, 0)) %>%
+  ggplot(aes(balance, prob)) +
+  geom_point(alpha = .3) +
+  geom_smooth(se = FALSE, method = "lm", formula = y ~ x) +
+  ggtitle("Linear regression model fit") +
+  xlab("Balance") +
+  ylab("Probability of Default") 
+  #scale_x_continuous(limits = c(0, 3000))
+
+p2 <- ISLR::Default %>%
+  mutate(prob = ifelse(default == "Yes", 1, 0)) %>%
+  ggplot(aes(balance, prob)) +
+  geom_point(alpha = .3) +
+  geom_smooth(se = FALSE, method = "glm", method.args = list(family = "binomial"), formula = y ~ x) +
+  ggtitle("Logistic regression model fit") +
+  xlab("Balance") +
+  ylab("Probability of Default") 
+  #scale_x_continuous(limits = c(0, 3000))
+
+```
+
+Agenda
+===
+
+-- Koncept modelu regresji  
+  
+-- Przypomnienie modelu regresji liniowej  
+  
+-- Uogólniony model liniowy  
+  
+-- Rodzina rozkładów wykładniczych
+  
+-- Przykład
+  
+
+Konept modelu regresji
+===
+  
+Koncept modelu regresji opiera się o dwa stwierdzenia:  
+  
+- dla każdej wartości zmiennej objaśniającej X, zmienna objaśniana Y jest zmienną losową o pewnej dystrybuancie;  
+  
+- wartości oczekiwane zmiennych objaśnianych Y różnią się w zależności od wielkości zmiennej objaśniającej X w pewien systematyczny sposób.  
+  
+<center>
+![Regression Model Concept](images/M.H.Kutner_RegressionModel.jpg)
+</center>
+
+
+Regresja liniowa - definicja 1/3 <!-- {#nextsteps} -->
+===
+  
+W modelu prostej regresji liniowej (Simple Linear Regression) zakładamy, że statystyczna zależność dwóch ciągłych zmiennych losowych X oraz Y jest przynajmniej w przybliżeniu liniowa:  
+  
+<center>$Y_i = \beta_0 + \beta_1X_i + \epsilon_i$, dla $i = 1, 2, ..., n$</center>  
+  
+gdzie $i$ oznaczają kolejne obserwacje, $Y_i$ są zmiennymi objaśnianymi (w $i$-tej obserwacji), $X_i$ reprezentują zmienne objaśniające, $\beta_0$ oraz $\beta_1$ są ustalonymi, ale nieznanymi stałymi - nazywane parametrami lub współczynnikami - które reprezentują przecięcie z osią współrzędnych oraz współczynnik kierunkowy prostej regresji liniowej, $\epsilon_i$ reprezentuje element losowy (szum), dla którego zakładamy, że $\epsilon_i$ są ${i.i.d.}$ z rozkładu o stałej wartości oczekiwanej $E[\epsilon] = 0$ oraz stałej wariancji $Var[\epsilon] = \sigma^2$.
+  
+Ponieważ $E[\epsilon] = 0$, to problem regresji liniowej jest w rzeczywistości problemem estymacji warunkowej wartości oczekiwanej:  
+  
+<center>$E[Y_i|X_i] = \beta_0 + \beta_1X_i$ oraz $Var[Y_i|X_i] = \sigma^2$, dla $i = 1, 2, ..., n$.</center>  
+
+<!--
+Komentarz:  
+Prosta regresja liniowa:  
+Prosta - model z jedną zmienną objaśniającą;  
+Regresja - statystyczna zależność pomiędzy zmiennymi losowymi;  
+Liniowa - model, który jest liniowy w zmiennych objaśniających oraz liniowy w parametrach.  
+-->
+Regresja liniowa - estymacja 2/3 <!-- {#nextsteps} -->
+===
+  
+**Estymator najmniejszych kwadratów**  
+  
+W jaki sposób oszacować wartość parametrów? Najczęściej używaną metodą jest metoda najmiejszych kwadratów *(**LSE** - least squares estimator)*, która polega na minimalizowaniu sumy kwadratów reszt *(**RSS** - residual sum of squares)*:  
+  
+<center>
+$RSS(\beta_0, \beta_1) = \sum_{i=1}^{n}[Y_i-(\beta_0 + \beta_1X_i)]^2 = \sum_{i=0}^{n}(Y_i-\beta_0 - \beta_1X_i)^2$.
+</center>  
+
+Twierdzenie Gaussa-Markowa mówi, że taki estymator $\beta_0$ oraz $\beta_1$ jest estymatorem nieobciążonym o najmniejszej wariancji wśród liniowych, nieobciążonych estymatorów liniowego modelu regresji.  
+  
+<!--Komentarz:  
+Łatwo można pokazać, że są one liniowe, pozostałych (nieobciążony, o najmniejszej wariancji) już nie sprawdzałem.-->  
+  
+Niewątpliwą zaletą tej procedury jest fakt, że nie wymaga ona założeń o rozkładzie zmiennej objaśnianej. 
+Niestety to powoduje, że procedura może nam dostarczyć jedynie punktowe estymatory parametrów modelu $\beta_0$ oraz $\beta_1$. W celu uzyskania dodatkowych informacji np. o trafności modelu (przedziały ufności dla parametrów, aplikacja testów statystycznych) musimy poczynić dodatkowe założenie o rozkładzie zmiennej objaśnianej. W przypadu modelu regresji liniowej standardowym założeniem jest, że zmienna objaśniana ma rozkład normalny. Wprowadzenie założenie o konkretnej postaci rozkładu zmiennej objaśnianej otwiera nam furtkę do wykorzystania procedury estymacji największej wiarogodności.  
+
+Regresja liniowa - estymacja 3/3 <!-- {#nextsteps} -->
+===
+**Estymator największej wiarogodności**  
+Intuicyjnie, procedura największej wiarogodności jako estymator wybiera takie wartości, które są najbardziej zgodne z danymi z próby, tj. takie wartości estymowanych parametrów, dla których prawdopodobieństwo otrzymania obserwacji z próby jest największe.  
+  
+<center>
+![Maximum Likelihood Estimation](images/M.H.Kutner_MLE.jpg)
+</center>
+  
+Sterujemy tak nachyleniem i wysokością prostej, tj. szukamy takich wielkości współczynników $\beta_0$ oraz $\beta_1$, żeby dla konkretnego zestawu danych funckja wiarogodności (rozumiana jako iloczyn wartości funkcji gęstości dla każdej wartości $Y_i$) była maksymalna.  
+  
+Okazuje się, że estymator najmniejszych kwadratów parametrów $\beta_0$ oraz $\beta_1$ jest estymatorem największej wiarogodności.
+
+Regresja liniowa - podsumowanie
+===
+Podsumujmy teraz nasze dotychczasowe rozważania o modelu regresji liniowej w postaci trzech poniższych założeń:  
+  
+**(LM1) Składnik losowy**:  
+  
+<center>$Y_i \stackrel{}{\sim} N(\mu_i, \sigma^2)$, dla $i = 1, 2, ..., n$.</center>  
+*Odnosi się do rozkładu zmiennej objaśnianej $Y_i$*.  
+  
+**(LM2): Składnik systematyczny**:  
+  
+<center>$\eta_i = \beta_0 + \beta_1X_i$, dla $i = 1, 2, ..., n$.</center>  
+*Odnosi się do zmiennych objaśniających $X_i$ jako liniowa ich kombinacja (liniowy predyktor)*.  
+  
+**(LM3): Funkcja łącząca**:  
+  
+<center>$\mu_i = \eta_i$, dla $i = 1, 2, ..., n$,</center>  
+<center>tj. $E[Y_i|X_i] = \beta_0 + \beta_1X_i$.</center>  
+*Określa sposób połączenia składnika losowego i składnika systematycznego. Określa jak wartość oczekiwana zmiennej objaśnianej zależy od zmiennych objaśniających*.  
+  
+Regresja liniowa - ograniczenia
+===
+
+  
+Model regresji liniowej nie będzie odpowiedni w następujących sytuacjach:  
+  
+-- trudno jest zapewnić 'normalność' i stałą wariancję zmiennej objaśnianej,  
+<!-- Można to poprawiać transformując dane, np. zmienną objaśnianą przetransformować log(*), ale jest to sztuczne, nieintuicyjne działanie.-->  
+-- zbiór wartości zmiennej objaśnianej $Y$ ograniczony (np. $Y$ przyjmuje tylko dwie wartości, lub przyjmuje wartości całkowite dodatnie),  
+<!-- Trudno jest zapewnić, że zmienna Y będzie z rozkładu Normalnego, tj. m.in. będzie przyjmowała wartości z R. Przykładowo możemy mieć zmienną objaśnianą przyjmującą wartości "tak" lub "nie", które mogą oznaczać, np. że ktoś kupił przedmiot lub nie. -->  
+
+<!--
+-- wariancja zmiennej objaśnianej $Y$ nie jest stała i zależy od wartości oczekiwanej $Y$,  
+-->
+  
+-- addytywność efektów zmiennych narzucona przez połączenie założeń (LM2) oraz (LM3) nie oddaje rzeczywistości w wielu przypadkach. Np. modelowanie powierzchni skrzydeł motyla, gdzie zmiennymi objaśniającymi są długość i szerokość skrzydła.
+
+<!-- Niektóre z tych słabości można poprawic poprzez zastosowanie transformacji zmiennych - zarówno objaśnianej, jak i objaśniających. Świetnym przykładem jest ten z cenami nieruchomości w zależności od roku wybudowania. Logarytmiczna transformacja zmiennej objaśnianej poprawia liniowość zależności - log(Y) i X.-->
+
+Uogólnione modele liniowe (GLM) 1/2
+===
+Możemy sobie w łatwy sposób poradzić z tymi ograniczeniami przechodząc do szerszej rodziny modeli regresji - uogólnionych modeli regresji liniowej.
+Pozostając w tej samej konwencji przedstawmy założenia GLM:  
+  
+**(GLM1) Składnik losowy**:  
+  
+<center>$Y_i \stackrel{}{\sim} EF(\theta_i, \phi)$, dla $i = 1, 2, ..., n$,</center>  
+gdzie $EF$ oznacza rozkład z rodziny rozkładów wykładniczych.
+  
+**(GLM2): Składnik systematyczny**:  
+  
+<center>$\eta_i = \beta_0 + \beta_1X_i$, dla $i = 1, 2, ..., n$.</center>  
+  
+**(GLM3): Funkcja łącząca**:  
+  
+<center>$g(\mu_i) = \eta_i$, dla $i = 1, 2, ..., n$,</center>  
+<center>tj. $g(E[Y_i|X_i]) = \beta_0 + \beta_1X_i$,</center>  
+gdzie funkcja $g: {\rm I\!R} \mapsto {\rm I\!R}$ jest ściśle monotoniczna.  
+  
+
+Uogólnione modele liniowe (GLM) 2/2
+===
+
+Więcej o funkcji łączącej $g$:  
+  
+- jako $g$ możemy przyjąć dowolną ściśle monotoniczną funkcję ${\rm I\!R} \mapsto {\rm I\!R}$, która będzie mapowała zbiór możliwych wartości $\mu_i$ ($\subseteq {\rm I\!R}$) na ${\rm I\!R}$ (zbiór wartości funkcji $\eta_i$).  
+Przykładowo, kiedy zmienna objaśniana $Y_i \stackrel{}{\sim} Bin(p_i)$, to funkcją $g$ może być dowolna ściśle monotoniczna funkcja $(0, 1) \mapsto {\rm I\!R}$. Kolokwialnie, funkcja $g$ ma powodować, że $\mu_i$ oraz $\eta_i$ będą kompatybilne.  
+  
+- w przypadku regresji liniowej funkcja łącząca jest identycznością.  
+  
+- oczywiście są pewne naturalne (kanoniczne) wybory funkcji łączacych, o których jest więcej na kolejnych slajdach, ale nie ma żadnych powodów *a priori*, dla których składnik systematyczny $\eta_i$ miałby być addytywny na skali zdefiniowanej przez tę naturalną funkcję łączacą.  
+
+Rodzina rozkładów wykładniczych
+===
+Większość powszechnie używanych rozkładów, m.in. Normalny, Dwumianowy, Poissona, są rozkładami z rodziny rozkładów wykładniczych ($EF(\theta_i, \phi)$), których funkcja gęstości jest postaci:  
+  
+<center>$f(y_i; \theta_i, \phi) = exp\Big\{ \frac{y_i\theta_i-b(\theta_i)}{\phi}+c(y_i, \phi) \Big\}$,</center>  
+określona dla wszystkich obserwacji zmiennej objasnianej $Y_i$, $i = 1, 2, ..., n$, gdzie $\theta_i$ to parametr **kanoniczny** (powiązany z wartością oczekiwaną), a $\phi$ to parametr dyspersji (powiązany z wariancją).  <!--Należy dodatkowo nałozyć pewne ograniczenia na te funkcje, ale już nie będę wnikał.-->
+  
+Dla praktycznych celów warto pamiętać, że rozkład z rodziny rozkładów wykładniczych ma dwie poniższe własności:  
+-- rozkład jest w pełni określony przez wartość oczekiwaną i wariancję (np. rozkład jednostajny nie jest),  
+-- wariancja $Y_i$ jest funkcją wartości oczekiwanej.  
+  
+
+Można pokazać, że:  
+
+<center>
+$\mu_i = E[Y_i] = b'(\theta_i)$ **(1)**  
+  
+$Var[Y_i] = b''(\theta_i)\phi$.
+</center>  
+  
+Powyższą funkcję wiarogodności będziemy chcieli optymalizować po parametrach $\beta_0$ oraz $\beta_1$. Jak w takim razie te parametry powiązane są z parametrem $\theta_i$?  
+
+
+Rodzina rozkładów wykładniczych
+===
+   
+Z **(1)** oraz z **GLM3**:  
+<center>$\theta_i \stackrel{(1)}{=} (b')^{-1}(\mu_i) \stackrel{GLM3}{=} (b')^{-1}(g^{-1}(\eta_i)) = (b')^{-1}(g^{-1}(\beta_0 + \beta_1X_i)).$</center>  
+Funkcja $g$ jest **kanoniczną** funkcją łączącą jeżeli jest postaci:  
+  
+<center>$g = (b')^{-1},$</center>  
+wtedy  
+  
+<center>$\theta_i = \eta_i = \beta_0 + \beta_1X_i.$</center>  
+  
+**Logarytm funkcja wiarogodności**
+  
+Ostatecznie logarytm funkcji wiarogodności, który będziemy opytmalizować jest postaci:  
+  
+<center>$l = \sum_{i=1}^{n}\Big\{ \frac{y_i(b')^{-1}(g^{-1}(\eta_i)) - b((b')^{-1}g^{-1}(\eta_i))}{\phi} + c(y_i, \phi) \Big\}$</center>
+  
+jeśli $g$ jest kanoniczna (tj. $\theta_i = \eta_i$), to funkcja upraszcza się do:
+  
+<center>$\sum_{i=1}^{n}\Big\{ \frac{y_i\eta_i - b(\eta_i)}{\phi} + c(y_i, \phi) \Big\}$,</center>  
+
+gdzie $\eta_i = \beta_0 + \beta_1X_i.$
+
+Pozostaje teraz zoptymalizować funkcję po parametrach $\beta_0$ oraz $\beta_1$ rozwiązując system równań:  
+  
+<center>$\frac{\partial l}{\partial \beta_j} = 0,$ gdzie $j = 1, ..., p$ (w naszym przypadku $p = 2$).</center>
+
+W wielu przypadkach analiztyczne rozwiązanie takiego układu jest niemożliwe. Do tego celu stosuje się algorytmu optymalizujące, najczęściej w przypadku GLM jest to algorytm *Fisher's Method of Scoring*.
+
+Przykład 1/2
+===
+  
+W poniższym zbiorze mamy dane o stanie zadłużenia osób posiadających karty kredytowe wraz z informacją o tym, czy dana osoba wywiązała się z tego zobowiązania.  
+  
+```{r plot}
+
+x <- head(ISLR::Default %>%
+    mutate(prob = ifelse(default == "Yes", 1, 0)))
+x[, c("default", "balance")]
+
+```
+  
+Pytanie czy wysokość stanu zadłużenia jest dobrą zmienną objaśniającą 
+Spróbujmy zamodelować prawdopodobieństwo niespłacenia zopobwiązania na dwa sposoby wykorzystując uogólnione modele liniowe:  
+  
+-- model liniowy, tj. zmienna objaśniana $default_i$ ma rozkład normalny, a funkcja łącząca $g$ jest identycznością.  
+  
+-- model logistyczny, tj. zmienna objaśniana $default_i$ ma rozkład dwumianowy, a funkcja łącząca $g$ jest funkcją logistyczną, tzn. ma postać:  
+  
+<center>$g(\mu_i) = logit(\mu_i) = ln(\frac{\mu_i}{1-\mu_i})$</center>
+  
+lub równoważnie  
+  
+<center>$\mu_i = \frac{e^{\eta_i}}{1+e^{\eta_i}} = \frac{e^{\beta_0 + \beta_1X_i}}{1+e^{\beta_0 + \beta_1X_i}}$.</center>
+
+Przykład 2/2
+===
+
+<center>
+```{r plot2}
+
+gridExtra::grid.arrange(p1, p2, nrow = 1)
+
+```
+</center>
+
+
+Bibliografia
+===
+  
+-- *Applied Linear Statistical Models*, Michael H. Kutner, Christopher J. Nachtsheim, John Neter, William Li, 2005;
+  
+-- Prezentacja *Introduction to Generalized Linear Models*, Heather Turner, 2008;  
+  
+-- *Hands-on Machine Learning with R*, Bradley Boehmke, Brandon Greenwell, 2020;  
+  
+-- *A Practitioner's Guide to Generalized Linear Models*, Duncan Anderson, Sholom Feldblum, Claudine Modlin, Doris Schirmacher, Ernesto Schirmacher, Neeza Thandi, 2007;  
+  
+-- Kurs *Statistics for Applications*, Philippe Rigollet MIT, 2016, <https://www.youtube.com/watch?v=X-ix97pw0xY>;  
+  
+Dyskusje na forach:  
+  
+  -- <https://stats.stackexchange.com/questions/40876/what-is-the-difference-between-a-link-function-and-a-canonical-link-function>  
+  
+  -- <https://stats.stackexchange.com/questions/20523/difference-between-logit-and-probit-models#30909>  
