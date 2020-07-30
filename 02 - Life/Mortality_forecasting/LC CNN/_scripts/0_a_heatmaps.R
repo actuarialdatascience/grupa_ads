@@ -3,6 +3,8 @@
 #### Heatmap of selected data
 ##################################################################
 
+## run after 0_dataReading as HMD_final is necessary
+
 mortality_heatmap <- function(mat, country, gender, year_min, year_max){
   m0 <- c(min(mat), max(mat))
   # rows are calendar year t, columns are ages x

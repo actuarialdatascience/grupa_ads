@@ -1,4 +1,4 @@
-
+## Listing 2: Deep neural network model LCLSTM1 with a LSTM layer
 LSTM <- function(N,T0, optim="adam"){
 rates <- layer_input(shape = c(T0 ,100) , dtype = 'float32' , name = 'rates')
 #
