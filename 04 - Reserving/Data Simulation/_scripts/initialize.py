@@ -71,14 +71,14 @@ def read_project(path: str):
         files read.
     :rtype: dict
     """
-    textcontent = {}
+    textfilecontent = {}
 
     # Discover .txt files and add them to the dictionary
     for filepath in iglob(os.path.join(path, '**/*.txt'), recursive=True):
-        add_path_dict(input_dict=textcontent, start_path=path,
+        add_path_dict(input_dict=textfilecontent, start_path=path,
                       file_path=filepath)
 
-    return textcontent
+    return textfilecontent
 
 
 # Add path argument for unzipping
