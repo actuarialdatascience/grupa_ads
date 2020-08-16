@@ -51,7 +51,7 @@ def add_path_dict(input_dict: dict, start_path: str, file_path: str):
         input_dict[os.path.splitext(relpath)[0]] = pd.read_csv(file_path,
                                                                sep='\t')
     else:
-        parent_dir = relpath.split('/')[0]
+        parent_dir = relpath.split(os.sep)[0]
         if parent_dir not in input_dict.keys():
             input_dict[parent_dir] = {}
         add_path_dict(input_dict=input_dict[parent_dir],
