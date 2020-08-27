@@ -1,15 +1,16 @@
 import numpy as np
+import pandas as pd
 
 
 def neural_network_1(var1, inputs, m, textfilecontent):
 
     list_of_vars = textfilecontent['List.of.Variables']
-    variable_layer_sizes = list_of_vars.loc[list_of_vars['Variable'] == var1]
+    variable_layers = list_of_vars.loc[list_of_vars['Variable'] == var1]
 
-    q1 = list_of_vars.loc[variable_layer_sizes].iloc[:, 1]
-    q2 = list_of_vars.loc[variable_layer_sizes].iloc[:, 2]
-    d1 = list_of_vars.loc[variable_layer_sizes].iloc[:, 3:].sum(axis=1)
-    d2 = list_of_vars.loc[variable_layer_sizes].iloc[:, 3:]
+    q1 = variable_layers.iloc[:, 1]
+    q2 = variable_layers.iloc[:, 2]
+    d1 = variable_layers.iloc[:, 3:].sum(axis=1)
+    d2 = variable_layers.iloc[:, 3:]
 
     data2 = np.ones((m, 1))
 
@@ -45,12 +46,12 @@ def neural_network_1(var1, inputs, m, textfilecontent):
 def neural_network_2(var1, inputs, m, textfilecontent):
 
     list_of_vars = textfilecontent['List.of.Variables']
-    variable_layer_sizes = list_of_vars.loc[list_of_vars['Variable'] == var1]
+    variable_layers = list_of_vars.loc[list_of_vars['Variable'] == var1]
 
-    q1 = list_of_vars.loc[variable_layer_sizes].iloc[:, 1]
-    q2 = list_of_vars.loc[variable_layer_sizes].iloc[:, 2]
-    d1 = list_of_vars.loc[variable_layer_sizes].iloc[:, 3:].sum(axis=1)
-    d2 = list_of_vars.loc[variable_layer_sizes].iloc[:, 3:]
+    q1 = variable_layers.iloc[:, 1]
+    q2 = variable_layers.iloc[:, 2]
+    d1 = variable_layers.iloc[:, 3:].sum(axis=1)
+    d2 = variable_layers.iloc[:, 3:]
 
     data2 = np.ones((m, 1))
 
@@ -84,11 +85,11 @@ def neural_network_2(var1, inputs, m, textfilecontent):
 def neural_network_3(var1, inputs, m, textfilecontent):
 
     list_of_vars = textfilecontent['List.of.Variables']
-    variable_layer_sizes = list_of_vars.loc[list_of_vars['Variable'] == var1]
+    variable_layers = list_of_vars.loc[list_of_vars['Variable'] == var1]
 
-    q = list_of_vars.loc[variable_layer_sizes].iloc[:, 1]
-    d1 = list_of_vars.loc[variable_layer_sizes].iloc[:, 3:].sum(axis=1)
-    d2 = list_of_vars.loc[variable_layer_sizes].iloc[:, 3:]
+    q = variable_layers.iloc[:, 1]
+    d1 = variable_layers.iloc[:, 3:].sum(axis=1)
+    d2 = variable_layers.iloc[:, 3:]
 
     data2 = np.ones((m, 1))
 
@@ -106,8 +107,8 @@ def neural_network_3(var1, inputs, m, textfilecontent):
                 2).reshape(-1, 1)
             data2 = np.hstack((data2, temp))
 
-    data2 = np.hstack((data2, inputs[["Pay00", "Pay01", "Pay02", "Pay03", "Pay04", "Pay05",
-                                      "Pay06", "Pay07", "Pay08", "Pay09", "Pay10", "Pay11"]]))
+    data2 = np.hstack((data2, inputs[['Pay00', 'Pay01', 'Pay02', 'Pay03', 'Pay04', 'Pay05',
+                                      'Pay06', 'Pay07', 'Pay08', 'Pay09', 'Pay10', 'Pay11']]))
 
     beta = textfilecontent['Parameters'][var1]['beta']
     W = textfilecontent['Parameters'][var1]['W']
