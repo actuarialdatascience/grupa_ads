@@ -5,8 +5,8 @@ library(reshape2)
 ## setting working directories 
 ## wd - with other scripts
 ## data_folder - with Mx_1x1
-wd <- "/home/as/Pulpit/ADS/Analizy/CNN LC/LC CNN/"
-data_folder <- "/home/as/Pulpit/ADS/Analizy/CNN LC/LC CNN/death_rates/Mx_1x1"
+wd <- "/home/as/Pulpit/ADS/Analizy/Own/CNN LC/LC CNN/"
+data_folder <- "/home/as/Pulpit/ADS/Analizy/Own/CNN LC/LC CNN/death_rates/Mx_1x1"
 
 setwd(wd)
 
@@ -14,6 +14,8 @@ ObsYear = 1999 # last year of training set
 T0 <- 10 # number of years back used to forecast
 model_type = "CNN"
 source("0_dataReading.R")
+
+#source("0_dataReading_Sal.R")
 
 # number of countries
 N <- HMD_final %>% select(Country) %>% distinct() %>% nrow()
@@ -33,14 +35,16 @@ data.preprocessing.CNNs <- function(data.raw, gender, country, T0, ObsYear=1999)
   mort_rates <- data.raw %>% filter(Gender == gender, Country == country) %>% select(Year, Age, val)
   mort_rates <- dcast(mort_rates, Year ~ Age, value.var="val")
   train.rates <- mort_rates %>% filter(Year <= ObsYear) %>% select(-Year) %>% as.matrix()
+  YT_year <- mort_rates %>% filter(Year <= ObsYear)%>% select(Year) %>% unlist() %>% unname()
+  YT_year <- tail(YT_year, -10) # omit first 10 years (used only as x)
   n.train <- nrow(train.rates)-(T0-1)-1 # number of training samples
-  xt.train <- array(NA, c(n.train, T0, 100))
-  YT.train <- array(NA, c(n.train, 100))
+  xt <- array(NA, c(n.train, T0, 100))
+  YT <- array(NA, c(n.train, 100))
   for (t0 in (1:n.train)){
-    xt.train[t0,,] <- train.rates[t0:(t0+T0-1), ]
-    YT.train[t0,] <-   train.rates[t0+T0,]
+    xt[t0,,] <- train.rates[t0:(t0+T0-1), ]
+    YT[t0,] <-   train.rates[t0+T0,]
   }
-  list(xt.train, YT.train)
+  list(xt, YT, YT_year)
 }
     
 ## creating the training set (all observation up to 1999) based on mx values only (with data.preprocessing.CNNs function)
@@ -52,7 +56,12 @@ Countries <- HMD_final %>% select(Country) %>% distinct() %>% unlist()
 
 VecGenders <- vector()
 VecCountries <- vector()
+#VecYears = vector()
+
 ListData <- list()
+
+#HMD_final = HMD_final[with(HMD_final, order(Gender, Country)), ]
+
 
 obs <-0
 for(c in 1:length(Countries)){
@@ -63,6 +72,9 @@ for(c in 1:length(Countries)){
     ListData[[(c-1)*2 + g]] <- data
     # VecGenders (with 0 or 1 for each observation)
     VecGenders<- c(VecGenders,rep(g-1,n))
+    
+    #years_fore = HMD_final[Gender == Genders[g] & Country ==Countries[c] & Year<2000]$Year%>%unique()%>%as.numeric()
+    #VecYears = c(VecYears,years_fore[11:length(years_fore)])
     # VecCounties (with number from 0 to 37 corresponding to each country for each observation)
     VecCountries <- c(VecCountries,rep(c-1,n))
   }
@@ -72,20 +84,31 @@ for(c in 1:length(Countries)){
 ## transformation of xtrain from data.preprocessing.CNNs to list of previous xtrain, veccountries and vecgender
 
 x.train <- array(NA, dim=c(obs, dim(ListData[[1]][[1]])[c(2,3)]))
-y.train <- array(NA, dim=c(obs,dim(ListData[[1]][[2]])[2]))
+y.train <- array(NA, dim=c(obs,1,dim(ListData[[1]][[2]])[2]))
+obsYearVec <- vector()
 
 counter = 0
 for (i in 1:(g*c)){
   n <- dim(ListData[[i]][[1]])[1]
+  obsYearVec <- c(obsYearVec,ListData[[i]][[3]] )
   for(j in 1:n){
     x.train[counter+j,,] <- ListData[[i]][[1]][j,,]
-    y.train[counter+j,] <- ListData[[i]][[2]][j,]
+    y.train[counter+j,1,] <- ListData[[i]][[2]][j,]
   }
   counter <- counter + n
 }
 
-x.train <- list(x.train, VecCountries, VecGenders)
-    
+# sort to be in a temporal order
+OrderByYear <- order(obsYearVec)
+
+x.train.sorted <- x.train[OrderByYear,,]
+y.train.sorted <- y.train[OrderByYear,,]
+dim(y.train.sorted) <- c(2662,1,100)
+VecGenders.sorted <- VecGenders[OrderByYear]
+VecCountries.sorted <- VecCountries[OrderByYear]
+
+x.train <- list(x.train.sorted, VecCountries.sorted, VecGenders.sorted)
+y.train <- y.train.sorted    
 # model
 
 if(model_type == "CNN"){
@@ -96,34 +119,37 @@ if(model_type == "CNN"){
 {
   stop("Wrong arcitecture specified within model_type variable")
 }
-      
+        
 modelName = paste(model_type ,T0, sep ="_")
 fileName <- paste("./CallBack/best_model_", modelName, sep="")
 summary(model)
+  
+# define callbacks
 
-# define callback
-CBs <- callback_model_checkpoint(fileName, monitor = "val_loss", verbose = 1,  save_best_only = TRUE, save_weights_only = TRUE)
+  
+model_callback <- callback_model_checkpoint(fileName, monitor = "val_loss", verbose = 1,  save_best_only = TRUE, save_weights_only = TRUE)
 
-# gradient descent fitting: takes roughly 800 seconds on my laptop
-  t1 <- proc.time()
-      fit <- model %>% fit(x=x.train, y=y.train, validation_split=0.05,
-                           epochs=500, verbose=1, callbacks=CBs) #in paper 2000 there is no difference at this moment                                       
-      proc.time()-t1
+lr_callback <- callback_reduce_lr_on_plateau(factor=.90, patience = 
+                                              50, verbose=1, cooldown = 5, min_lr = 0.00005)
 
-# in-sample error              
+CBs <- list(model_callback, lr_callback)
+
+# gradient descent fitting
+t1 <- proc.time()
+    fit <- model %>% fit(x=x.train, y=y.train, epochs = 2000, batch_size =16, 
+            verbose = 2, validation_split = 0.05, shuffle = T,callbacks=CBs) #in paper 2000 there is no difference at this moment                                       
+proc.time()-t1
+
+# in-sample error (validation)       
+fit$metrics$val_loss%>%min()
+
 load_model_weights_hdf5(model, fileName)
-    
-mort_y = exp(y.train*(val.max-val.min) + val.min)
-pred_y = exp(((model %>% predict(x.train))*(val.max-val.min)+ val.min))
-pred_y = pred_y[,1,]
-round(10^4*mean((pred_y - mort_y)^2),4)
-            
+
 ## recursive prediction
     
-# validation data pre-processing
-all_mort2 <- HMD_final[which(HMD_final$Year > (ObsYear-10)),]
-all_mortV <- all_mort2
-vali.Y <- all_mortV[which(all_mortV$Year > ObsYear),]
+# testing data pre-processing
+testData <- HMD_final %>% filter(Year > (ObsYear - 10)) 
+#vali.Y <- testData %>% fi[which(all_mortV$Year > ObsYear),]
 
 recursive.prediction <- function(ObsYear, all_mort2, gender, country_name, country_index, T0, val.min, val.max, model.p){       
   single.years <- array(NA, c(2016-ObsYear))
@@ -135,27 +161,28 @@ recursive.prediction <- function(ObsYear, all_mort2, gender, country_name, count
     x.vali <- data2[[1]]
     if (gender=="Female"){yy <- 1}else{yy <- 0}
     x.vali <- list(x.vali, rep(country_index, dim(x.vali)[1]), rep(yy, dim(x.vali)[1]))
-    y.vali <- as.vector((data2[[2]])*(val.max-val.min)+ val.min)
-    predicted_logmx <- ((model %>% predict(x.vali))*(val.max-val.min)+ val.min) %>% as.vector()
+    y.vali <- data2[[2]]
+    predicted_val <- model %>% predict(x.vali) %>% as.vector()
+    predicted_logmx <- (predicted_val*(val.max-val.min)+ val.min)
     Yhat.vali2 <- exp(predicted_logmx)
-    single.years[ObsYear1-ObsYear] <- round(10^4*mean((Yhat.vali2-exp(y.vali))^2),4)
-    predicted <- all_mort2 %>% filter(Year==ObsYear1, Gender == gender, Country == country) # [which(all_mort2$Year==ObsYear1),]
-    keep <- all_mort2 %>% filter(Year!=ObsYear1, Gender == gender, Country == country)
+    ## error calculated on transformed data, in line with Salvatore comment
+    single.years[ObsYear1-ObsYear] <- round(10^4*mean((predicted_val-y.vali)^2),4)
+    
+    predicted <- all_mort2 %>% filter(Year==ObsYear1, Gender == gender, Country == country_name) # [which(all_mort2$Year==ObsYear1),]
+    keep <- all_mort2 %>% filter(Year!=ObsYear1, Gender == gender, Country == country_name)
     predicted$logmx <- predicted_logmx
     predicted$mx <- exp(predicted$logmx)
+    predicted$val <- predicted_val
     all_mort2 <- rbind(keep,predicted)
-    #all_mort2 <- all_mort2 %>% order_by(Year, Age)
-  
+    all_mort2 <- all_mort2 %>% arrange(Year, Age)
+  }
   list(all_mort2, single.years)
-  }                  
 }
 
     
 #example prediction      
-pred.CHE.F <- recursive.prediction(1999, all_mort2, "Female", "CHE",5,T0, val.min, val.max, model)
-pred.CHE.F <- pred.CHE.F[[1]] %>% filter(Year > ObsYear)
-vali.Y.CHE.F <- vali.Y %>% filter(Country == "CHE", Gender == "Female")
-round(10^4*mean((pred.CHE.F$mx-vali.Y.CHE.F$mx)^2),4)
+pred.CHE.F <- recursive.prediction(1999, testData, "Female", "CHE",(match("CHE", Countries)-1),T0, val.min, val.max, model)
+pred.POL.M <- recursive.prediction(1999, testData, "Male", "POL",(match("POL", Countries)-1),T0, val.min, val.max, model)
 
   
   

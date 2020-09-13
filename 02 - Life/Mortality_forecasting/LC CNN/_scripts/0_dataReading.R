@@ -33,7 +33,7 @@ HMD_list[[countries[i]]] <- readHMD(long_dir_files[i]) %>% filter(Year >= 1950 &
 
 rm(list = c("files", "countries", "filetype","stat", "i"))
 
-HMD_data <- bind_rows(HMD_list, .id = "Country")
+HMD_data <- bind_rows(HMD_list, .id = "Country") %>% data.table()
 
 
 ## Choosing the cuntries with more than 10 years of observation before year 2000
@@ -44,7 +44,7 @@ HMD_data_chosen <- HMD_data %>% filter(Country %in% Analyzed_Countries)
 
 ## settin mx to NA if mx =< 0 or mx >= 1
 HMD_data_chosen <- HMD_data_chosen %>% 
-  mutate(mx = if_else(mx < 1 & mx > 0, mx, NA_real_))
+  mutate(mx = if_else(mx > 0, mx, NA_real_))
 
 rm(list = c("Analyzed_Countries","HMD_data", "HMD_list"))
 
