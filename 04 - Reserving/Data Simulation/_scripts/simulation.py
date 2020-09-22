@@ -199,8 +199,11 @@ def cash_flow_prep_1(nop, input2, art_obs, seed1, textfilecontent):
 def cash_flow_prep_2(nop, input2, art_obs, textfilecontent):
 
     # We only look at observations with no recovery payment
+    x_np_0 = input2[input2['Zmnew'] == 0]
+
     # We add an artificial observation
-    x_np_0 = input2[input2['Zmnew'] == 0].append(art_obs)
+    x_np_0.loc[len(x_np_0.index)] = art_obs
+
 
     # We simulate the proportions paid in the positive payments
     # Get the output of the neural network
