@@ -136,26 +136,38 @@ def cash_flow_prep_1(nop, input2, art_obs, seed1, textfilecontent):
     # Get the output of the neural network
     x_np_nr = x_np.shape[0]
     var1 = 'P' + nop + 'K'
-    pi_t = neural_network_2(var1, x_np, x_np_nr, textfilecontent).reshape((-1, x_np_nr), order='F')
+    pi_t = neural_network_2(
+        var1,
+        x_np,
+        x_np_nr,
+        textfilecontent).reshape((-1, x_np_nr), order='F')
 
     # The possible distribution patterns are coded as follows
-    distribution_codes = textfilecontent['Parameters'][var1]['distribution.codes']
+    distribution_codes = (
+            textfilecontent['Parameters'][var1]['distribution.codes']
+        )
 
-    # It depends on the reporting delay what distribution patterns of the payments are possible:
+    # It depends on the reporting delay what distribution patterns
+    # of the payments are possible:
     ldc = distribution_codes.shape[0]
 
     pi_t_helper = pi_t - pi_t * np.array(
-        (np.repeat(distribution_codes, repeats=x_np_nr) % 2 ** (x_np[:, 7] + 1)) > 0
+        (np.repeat(distribution_codes,
+                   repeats=x_np_nr
+                   ) % 2 ** (x_np[:, 7] + 1)) > 0
     ).reshape((ldc, -1))
 
     pi_t = pi_t_helper / np.sum(pi_t_helper, axis=0)
-    # We have to separate the cases where none of the distribution.codes is possible because of the reporting delay
+    # We have to separate the cases where none of the distribution.codes
+    # is possible because of the reporting delay
 
-    # First we take the observations where we have at least one distribution pattern that is possible
+    # First we take the observations where we have at least one distribution
+    # pattern that is possible
     # We add one artificial probability vector
     indexing_helper = np.isnan(pi_t[0, :])
 
-    pi_t_tilde = np.hstack((pi_t[:, indexing_helper], pi_t[:, -1])).reshape((ldc, -1), order='F')
+    pi_t_tilde = np.hstack((pi_t[:, indexing_helper],
+                            pi_t[:, -1])).reshape((ldc, -1), order='F')
 
     # Generate the distribution pattern according to pi_t.tilde
     np.random.seed(seed1 + 20 + nop)
@@ -163,14 +175,19 @@ def cash_flow_prep_1(nop, input2, art_obs, seed1, textfilecontent):
     random_generation = np.random.uniform(size=pi_t_tilde.shape[1])
     cumul_pi_t = np.cumsum(pi_t_tilde / pi_t_tilde.sum(axis=0), axis=0)
 
-    distribution_pattern = distribution_codes[np.array(random_generation > cumul_pi_t.transpose()).sum(axis=0)]
+    distribution_pattern = distribution_codes[
+        np.array(random_generation > cumul_pi_t.transpose()).sum(axis=0)
+    ]
 
-    # Add the distribution pattern (correcting for the artificially added probability vector)
+    # Add the distribution pattern (correcting for the artificially
+    # added probability vector)
 
     x_np.loc[indexing_helper, 26] = distribution_pattern[, :-1]
 
-    # For the observations with reporting delay equal to 1, only few patterns are available
-    # Thus, for a random half of these observations, we distribute the payments arbitrarily
+    # For the observations with reporting delay equal to 1,
+    # only few patterns are available
+    # Thus, for a random half of these observations,
+    # we distribute the payments arbitrarily
     # First we add an artificial observation to prevent the code from crashing
     art_obs_new = art_obs
     art_obs_new['V27'] = None
@@ -184,14 +201,19 @@ def cash_flow_prep_1(nop, input2, art_obs, seed1, textfilecontent):
     temp = np.where(x_np['RepDel'] == 1)[0]
     choose = np.random.choice(range(len(temp)), size=np.ceil(len(temp)/2))
     np.random.seed(seed1 + 120 + nop)
-    samp = np.random.choice(range(2, 13), size=choose.shape[0] * nop).reshape((nop, -1))
+    samp = np.random.choice(range(2, 13), size=choose.shape[0] * nop)\
+        .reshape((nop, -1))
     x_np[temp[choose], -1] = np.sum(2 ^ samp, axis=1)
 
-    # Now we take the observations where we have no distribution pattern that is possible
+    # Now we take the observations where we have no distribution pattern
+    # that is possible
     # (because of the reporting delay)
 
     np.random.seed(seed1 + 140 + nop)
-    samp = np.vstack([np.random.choice(range(x + 1, 13), nop) for x in x_np.iloc[indexing_helper, 7]])
+    samp = np.vstack([
+        np.random.choice(range(x + 1, 13),
+                         nop) for x in x_np.iloc[indexing_helper, 7]
+    ])
     x_np.iloc[indexing_helper, 26] = np.sum(2 ^ samp, axis=1)
 
     # Correct for the observations that we added artificially
@@ -209,10 +231,12 @@ def cash_flow_prep_2(nop, input2, art_obs, textfilecontent):
     # We add an artificial observation
     x_np_0.loc[len(x_np_0.index)] = art_obs
 
-
     # We simulate the proportions paid in the positive payments
     # Get the output of the neural network
-    pi_t = neural_network_2('P' + nop + 'pRA', x_np_0, x_np_0.shape[0], textfilecontent)
+    pi_t = neural_network_2('P' + nop + 'pRA',
+                            x_np_0,
+                            x_np_0.shape[0],
+                            textfilecontent)
     pi_t = pi_t.reshape((-1, x_np_0.shape[0]), order='F')
 
     # Determine the cash flow
