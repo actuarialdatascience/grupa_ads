@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from tensorflow.keras import Model, backend
+from tensorflow.keras import Model, backend, initializers
 from tensorflow.keras.layers import Dense, Input, Multiply
 
 
@@ -31,11 +31,10 @@ hidden_layer = Dense(units=q, activation='tanh')(features)
 output_layer = Dense(units=1, activation=backend.exp)(hidden_layer)
 
 volumes = Input(shape=1)
-offset_layer = Dense(units=1, activation='linear', use_bias=False,
-                     trainable=False)(volumes)
-# originally there was also 'weights=[np.array(1).reshape(1, 1)]',
-# but it works without it the same way
-# and it seems that it does not add anything here
+offset_layer = Dense(units=1, activation='linear',
+                     use_bias=False,
+                     trainable=False,
+                     kernel_initializer=initializers.Ones())(volumes)
 
 merged = Multiply()([output_layer, offset_layer])
 
