@@ -1,6 +1,13 @@
 import numpy as np
 import pandas as pd
 
+FEATURE_COLNAMES = ["ClNr", "LoB", "cc", "AY", "AQ", "age", "inj_part"]
+OUTPUT_COLNAMES = [
+    "RepDel", "Z", "logY", "K1", "K", "Zmnew", "logYm", "Pay00", "Pay01",
+    "Pay02", "Pay03", "Pay04", "Pay05", "Pay06", "Pay07", "Pay08", "Pay09",
+    "Pay10", "Pay11"
+]
+
 
 def neural_network_1(var1, inputs, m, textfilecontent):
 
@@ -17,25 +24,28 @@ def neural_network_1(var1, inputs, m, textfilecontent):
     for i in range(len(d2.columns)):
         if d2.iloc[0, i] == 1 and i in [0, 1, 5]:
             translator = textfilecontent['Translators'][var1][d2.columns[i]]
-            data2 = np.hstack((data2, translator.loc[inputs[:, i]]))
+            data2 = np.hstack((data2, translator.iloc[inputs.iloc[:, i+1] - 1]))
         elif d2.iloc[0, i] == 1:
             translator = textfilecontent['Translators'][var1][d2.columns[i]]
             temp = np.round(
-                2 * np.minimum(
-                    np.maximum(
-                        inputs[:, i+1],
-                        np.array(translator.iloc[0, :])
-                    ),
-                    np.array(translator.iloc[1, :])
-                ) / int(translator.iloc[1, :] - translator.iloc[0, :]) - 1,
-                2).reshape(-1, 1)
+                2 * (
+                    np.minimum(
+                        np.maximum(
+                            inputs.iloc[:, i+1].values,
+                            np.array(translator.iloc[0, 0])
+                        ),
+                        np.array(translator.iloc[1, 0])
+                    ) - translator.iloc[0, 0]
+                ) / int(translator.iloc[1, 0] - translator.iloc[0, 0]) - 1,
+                2
+            ).reshape(-1, 1)
             data2 = np.hstack((data2, temp))
 
-    beta = textfilecontent['Parameters'][var1]['beta']
+    beta = textfilecontent['Parameters'][var1]['beta'].values
     W1 = textfilecontent['Parameters'][var1]['W1']
     W2 = textfilecontent['Parameters'][var1]['W2']
 
-    z1_j = np.ones((int(q1)+1, m))
+    z1_j = np.ones((int(q1) + 1, m))
     z1_j[1:, :] = np.power(1 + np.exp(- W1.dot(np.transpose(data2))), -1)
     z2_j = np.ones((int(q2) + 1, m))
     z2_j[1:, :] = np.power(1 + np.exp(- W2.dot(2 * z1_j - 1)), -1)
@@ -182,7 +192,7 @@ def cash_flow_prep_1(nop, input2, art_obs, seed1, textfilecontent):
     # Add the distribution pattern (correcting for the artificially
     # added probability vector)
 
-    x_np.loc[indexing_helper, 26] = distribution_pattern[, :-1]
+    x_np.loc[indexing_helper, 26] = distribution_pattern.iloc[:, :-1]
 
     # For the observations with reporting delay equal to 1,
     # only few patterns are available
@@ -244,3 +254,91 @@ def cash_flow_prep_2(nop, input2, art_obs, textfilecontent):
 
     # Output of the function
     return x_np_0
+
+
+def simulations(data: pd.DataFrame, textfilecontent):
+    x = pd.concat(
+        [
+            data.copy(),
+            pd.DataFrame(
+                {var: [pd.NA] * data.shape[0] for var in OUTPUT_COLNAMES}
+            )
+        ],
+        axis=1
+    )
+
+    x_art = x.iloc[1, ].copy(deep=True)
+    x_art.iloc[:14] = [-1, 4, 19, 2001, 1, 40, 70, 0, 1, 5, 0, 4, 1, 4]
+
+    x_art_wp = x_art.append(pd.Series([pd.NA]))
+    x_art_claimsclosing = x_art.copy(deep=True).drop(
+        labels=["Z", "logY", "K1", "K", "Zmnew", "logYm"]
+    )
+    x_art_claimsclosing.loc["ReOp"] = 0
+    x_art_claimsclosing.loc["maxPayDel"] = 0
+
+    ###################
+    # Reporting Delay #
+    ###################
+    pi_t = neural_network_1("RepDel", x, x.shape[0], textfilecontent)
+    pi_t = np.exp(pi_t) / np.exp(pi_t).sum(axis=0)
+
+    random_generation = np.random.uniform(size=(pi_t.shape[1], 1))
+    cumul_pi_t = (
+        np.tril(np.ones((pi_t.shape[0], pi_t.shape[0]))).dot(pi_t)
+        / pi_t.sum(axis=0)
+    )
+    x.iloc[:, 7] = (random_generation > cumul_pi_t.transpose()).sum(axis=1)
+
+    print("END")
+    #####################
+    # Payment Indicator #
+    #####################
+
+    ################################
+    # Number of Payments Indicator #
+    ################################
+
+    ###############################################
+    # Number of Payments Conditional Distribution #
+    ###############################################
+
+    ################
+    # Payment Size #
+    ################
+
+    ######################
+    # Recovery Indicator #
+    ######################
+
+    #########################
+    # Recovery Payment Size #
+    #########################
+
+    ######################
+    # Cash Flow Patterns #
+    ######################
+
+    # 0 payments
+    # 1 payment
+    # 2 payments
+    # 2 payments (with 0 recovery payments) #
+    # 2 payments (with 1 recovery payment) #
+    # 3 payments #
+    # 3 payments (with 0 recovery payments) #
+    # 3 payments (with 1 recovery payment) #
+    # 3 payments (with 2 recovery payments) #
+    # 4 payments #
+    # 4 payments (with 0 recovery payments) #
+    # 4 payments (with 1 recovery payment) #
+    # 4 payments (with 2 recovery payments) #
+    # 5-11 payments #
+    # 12 payments #
+    # 12 payments (with 0 recovery payments) #
+    # 12 payments (with 1 recovery payment) #
+    # 12 payments (with 2 recovery payments) #
+
+    ############################
+    # Re-Opening YES=1 or NO=0 #
+    ############################
+

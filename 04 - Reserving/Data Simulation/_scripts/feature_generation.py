@@ -41,12 +41,12 @@ def f_inj_part(x, alpha, beta, const):
     return (np.exp(alpha * x / const + math.log(beta)) - beta) / alpha
 
 
-def feature_generation(V, lob, inflation, seed1, textfilecontent):
+def feature_generation(V, lob_dist, inflation, seed1, textfilecontent):
     """Function Feature.Generation that generates features
 
     We have the following inputs:
     :param V: totally expected number of claims
-    :param lob: categorical distribution for the allocation of the claims to
+    :param lob_dist: categorical distribution for the allocation of the claims to
         the 4 lines of business
     :param inflation: growth parameters (per LoB) for the numbers of claims in
         the 12 accident years
@@ -56,7 +56,7 @@ def feature_generation(V, lob, inflation, seed1, textfilecontent):
     """
 
     # Weights in LoB.dist have to be nonnegative
-    if len([num for num in lob if num < 0]) > 0:
+    if len([num for num in lob_dist if num < 0]) > 0:
         print(
             "ERROR: The weights determining the distribution amongst the lines "
             "of business cannot be negative."
@@ -72,7 +72,7 @@ def feature_generation(V, lob, inflation, seed1, textfilecontent):
     vdist = np.zeros((13, 4))
     random.seed(seed1)
     # Determine the number of claims per accident year (for all LOBs)
-    vdist[0] = np.random.multinomial(V, lob, size=1)
+    vdist[0] = np.random.multinomial(V, lob_dist, size=1)
     random.seed(seed1 + 1)
     vmean = np.array(
         [
