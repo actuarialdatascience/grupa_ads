@@ -24,3 +24,11 @@ ENV/
 # Spyder project settings
 .spyderproject
 .spyproject
+
+
+################
+# 04 - Reserving
+################
+
+# Data Simulation
+Simulation.Machine.V1/
