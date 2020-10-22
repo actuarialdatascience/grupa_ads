@@ -290,10 +290,18 @@ def simulations(data: pd.DataFrame, textfilecontent):
     )
     x.iloc[:, 7] = (random_generation > cumul_pi_t.transpose()).sum(axis=1)
 
-    print("END")
     #####################
     # Payment Indicator #
     #####################
+    pi_t = neural_network_1("Z", x, x.shape[0], textfilecontent)
+    pi_t = 1 / (1 + np.exp(-pi_t))
+
+    random_generation = np.random.uniform(size=(1, pi_t.shape[1]))
+    x.iloc[:, 8] = (random_generation <= pi_t).sum(axis=0)
+
+    x_0 = x.loc[x.Z == 0, :].append(x_art)
+    x1 = x.loc[x.Z == 1, :].append(x_art)
+    print("END")
 
     ################################
     # Number of Payments Indicator #

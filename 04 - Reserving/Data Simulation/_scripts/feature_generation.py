@@ -172,7 +172,7 @@ def feature_generation(V, lob_dist, inflation, seed1, textfilecontent):
     # Generate observations from a multivariate normal distribution
     random.seed(seed1 + 3)
     Sigma = pd.DataFrame(
-        textfilecontent["Simulation.Machine.V1"][
+        textfilecontent[
             "Feature.Generation.Parameters"
         ]["LoB1and2"]["Covariances"]["Covariance"]
     )
@@ -187,7 +187,7 @@ def feature_generation(V, lob_dist, inflation, seed1, textfilecontent):
     # Claims code (cc)
     # Source the parameters
     param = pd.DataFrame(
-        textfilecontent["Simulation.Machine.V1"][
+        textfilecontent[
             "Feature.Generation.Parameters"
         ]["LoB1and2"]["Parameters"]["cc"]
     )
@@ -200,7 +200,7 @@ def feature_generation(V, lob_dist, inflation, seed1, textfilecontent):
         )
     )
     translator = pd.DataFrame(
-        textfilecontent["Simulation.Machine.V1"][
+        textfilecontent[
             "Feature.Generation.Parameters"
         ]["LoB1and2"]["Translators"]["cc"]
     )
@@ -211,7 +211,7 @@ def feature_generation(V, lob_dist, inflation, seed1, textfilecontent):
 
     # Age of the injured (age)
     param2 = pd.DataFrame(
-        textfilecontent["Simulation.Machine.V1"][
+        textfilecontent[
             "Feature.Generation.Parameters"
         ]["LoB1and2"]["Parameters"]["age"]
     )
@@ -235,7 +235,7 @@ def feature_generation(V, lob_dist, inflation, seed1, textfilecontent):
 
     # Injured Part (inj_part)
     param3 = pd.DataFrame(
-        textfilecontent["Simulation.Machine.V1"][
+        textfilecontent[
             "Feature.Generation.Parameters"
         ]["LoB1and2"]["Parameters"]["inj_part"]
     )
@@ -248,7 +248,7 @@ def feature_generation(V, lob_dist, inflation, seed1, textfilecontent):
         )
     )
     translator2 = pd.DataFrame(
-        textfilecontent["Simulation.Machine.V1"][
+        textfilecontent[
             "Feature.Generation.Parameters"
         ]["LoB1and2"]["Translators"]["inj_part"]
     )
@@ -263,7 +263,7 @@ def feature_generation(V, lob_dist, inflation, seed1, textfilecontent):
     # Feature Generation for LoB 3 and 4
     random.seed(seed1 + 4)
     Sigma = pd.DataFrame(
-        textfilecontent["Simulation.Machine.V1"][
+        textfilecontent[
             "Feature.Generation.Parameters"
         ]["LoB3and4"]["Covariances"]["Covariance"]
     )
@@ -276,7 +276,7 @@ def feature_generation(V, lob_dist, inflation, seed1, textfilecontent):
     # Claims code (cc)
     # Source the parameters
     param = pd.DataFrame(
-        textfilecontent["Simulation.Machine.V1"][
+        textfilecontent[
             "Feature.Generation.Parameters"
         ]["LoB3and4"]["Parameters"]["cc"]
     )
@@ -289,7 +289,7 @@ def feature_generation(V, lob_dist, inflation, seed1, textfilecontent):
         )
     )
     translator = pd.DataFrame(
-        textfilecontent["Simulation.Machine.V1"][
+        textfilecontent[
             "Feature.Generation.Parameters"
         ]["LoB3and4"]["Translators"]["cc"]
     )
@@ -300,7 +300,7 @@ def feature_generation(V, lob_dist, inflation, seed1, textfilecontent):
 
     # Age of the injured (age)
     param2 = pd.DataFrame(
-        textfilecontent["Simulation.Machine.V1"][
+        textfilecontent[
             "Feature.Generation.Parameters"
         ]["LoB3and4"]["Parameters"]["age"]
     )
@@ -324,7 +324,7 @@ def feature_generation(V, lob_dist, inflation, seed1, textfilecontent):
 
     # Injured Part (inj_part)
     param3 = pd.DataFrame(
-        textfilecontent["Simulation.Machine.V1"][
+        textfilecontent[
             "Feature.Generation.Parameters"
         ]["LoB3and4"]["Parameters"]["inj_part"]
     )
@@ -337,7 +337,7 @@ def feature_generation(V, lob_dist, inflation, seed1, textfilecontent):
         )
     )
     translator2 = pd.DataFrame(
-        textfilecontent["Simulation.Machine.V1"][
+        textfilecontent[
             "Feature.Generation.Parameters"
         ]["LoB3and4"]["Translators"]["inj_part"]
     )
