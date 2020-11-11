@@ -51,7 +51,7 @@ def add_path_dict(input_dict: dict, start_path: str, file_path: str):
         input_dict[os.path.splitext(relpath)[0]] = pd.read_csv(file_path,
                                                                sep='\t')
     else:
-        parent_dir = relpath.split('/')[0]
+        parent_dir = relpath.split(os.sep)[0]
         if parent_dir not in input_dict.keys():
             input_dict[parent_dir] = {}
         add_path_dict(input_dict=input_dict[parent_dir],
@@ -71,14 +71,14 @@ def read_project(path: str):
         files read.
     :rtype: dict
     """
-    textcontent = {}
+    textfilecontent = {}
 
     # Discover .txt files and add them to the dictionary
     for filepath in iglob(os.path.join(path, '**/*.txt'), recursive=True):
-        add_path_dict(input_dict=textcontent, start_path=path,
+        add_path_dict(input_dict=textfilecontent, start_path=path,
                       file_path=filepath)
 
-    return textcontent
+    return textfilecontent
 
 
 # Add path argument for unzipping
