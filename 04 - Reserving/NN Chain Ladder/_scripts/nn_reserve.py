@@ -17,8 +17,7 @@ def read_data(path):
 
     # Drop unnecessary columns
     simulated_data.drop(
-        ['Unnamed: 0']
-        + ['ClNr']
+        ['ClNr']
         + ['RepDel']
         + [f"Open{j:02}" for j in range(development_length)],
         axis=1,
@@ -244,7 +243,7 @@ def main(path):
     print("Training models...")
     models = []
     for dev_year in range(development_length - 1):
-        current_model = fit_model_nonzero(df, dev_year, 20, True, 10, 10000)
+        current_model = fit_model_nonzero(df, dev_year, 20, False, 100, 10000)
         current_model.save(f"model{dev_year}")
         models.append(current_model)
 
