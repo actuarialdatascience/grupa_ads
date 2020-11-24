@@ -17,7 +17,9 @@ def read_data(path):
 
     # Drop unnecessary columns
     simulated_data.drop(
-        ['ClNr'] + [f"Open{j:02}" for j in range(development_length)],
+        ['ClNr']
+        + ['RepDel']
+        + [f"Open{j:02}" for j in range(development_length)],
         axis=1,
         inplace=True
     )
@@ -32,9 +34,14 @@ def read_data(path):
     cumulative_payments = cumulative_payments.cumsum(axis=1)
 
     # Concatenate
-    simulated_data = pd.concat([simulated_data, cumulative_payments], axis=1)
+    simulated_data = (
+        pd.concat([simulated_data, cumulative_payments], axis=1)
+            .groupby(['LoB', 'cc', 'AY', 'AQ', 'age', 'inj_part'])
+            .agg(sum)
+            .reset_index()
+    )
 
-    return simulated_data
+    return simulated_data, development_length
 
 
 def compute_triangle(df):
@@ -88,24 +95,9 @@ def predict_cl(triangle):
 
 
 def preprocess_data(df):
-    # Determine accident years and development length
-    development_length = len(
-        list(filter(lambda col: col.startswith("PayCum"), df.columns))
-    )
-
-    # Filter data for claims observed prior to the last observed year
-    df_filtered = (
-        df
-        .loc[df.AY + df.RepDel <= df.AY.max(), :]
-        .drop(
-            ["RepDel"] + [f"Pay{j:02}" for j in range(development_length)],
-            axis=1
-        )
-    )
-
     # Apply one-hot-encoding
     df_preproc = pd.get_dummies(
-        df_filtered,
+        df,
         columns=["LoB", "cc", "inj_part"],
         sparse=True,
         drop_first=True
@@ -123,8 +115,8 @@ def preprocess_data(df):
 
 
 def build_nn(q, dat_x=None):
-    if dat_x is not None and dat_x.size[1] == 5:
-        inputs = Input(shape=(5, ), dtype="int32")
+    if dat_x is not None and dat_x.shape[1] == 5:
+        features = Input(shape=(5, ), dtype="int32")
 
         encoders = []
         encoded = []
@@ -137,14 +129,14 @@ def build_nn(q, dat_x=None):
                 current_encoder = preprocessing.Normalization()
             encoders.append(current_encoder)
             encoders[var_idx].adapt(dat_x[:, var_idx])
-            encoded.append(encoders[var_idx](inputs[:, var_idx]))
+            encoded.append(encoders[var_idx](features[:, var_idx]))
 
-        features = concatenate(encoded)
-    elif dat_x is None or dat_x.size[1] == 146:
-        features = Input(shape=(146, ))
-    else:
-        raise ValueError("The input array can have either 5 or 146 columns.")
-    hidden_layer = Dense(units=q, activation='tanh')(features)
+        features_encoded = concatenate(encoded)
+        hidden_layer = Dense(units=q, activation='tanh')(features_encoded)
+    elif dat_x is None or dat_x.shape[1] > 5:
+        features = Input(shape=(dat_x.shape[1], ))
+        hidden_layer = Dense(units=q, activation='tanh')(features)
+
     output_layer = Dense(units=1, activation=backend.exp)(hidden_layer)
 
     volumes = Input(shape=(1, ))
@@ -154,7 +146,7 @@ def build_nn(q, dat_x=None):
 
     merged = Multiply()([output_layer, offset_layer])
 
-    model = Model(inputs=[inputs, volumes], outputs=merged)
+    model = Model(inputs=[features, volumes], outputs=merged)
     model.compile(loss='mse', optimizer='rmsprop', metrics=["mse"])
 
     return model
@@ -170,10 +162,10 @@ def fit_model_nonzero(df, dev_year, q, per_batch_preproc, epochs, batch_size):
     dat = (
         df.loc[
             (df[f"PayCum{dev_year:02}"] > 0)
-            & (df.AY + df.RepDel <= df.AY.max()), :
+            & (df.AY + dev_year < df.AY.max()), :
         ]
         .drop(
-            ["AY", "RepDel"]
+            ["AY"]
             + [f"Pay{j:02}" for j in range(development_length)],
             axis=1
         )
@@ -182,7 +174,7 @@ def fit_model_nonzero(df, dev_year, q, per_batch_preproc, epochs, batch_size):
     if per_batch_preproc:
         dat_x = dat.iloc[:, :5].values
     else:
-        dat_x = preprocess_data(dat).values
+        dat_x = preprocess_data(dat.iloc[:, :5]).values
     dat_c0 = dat.loc[:, f"PayCum{dev_year:02}"].values
     dat_c1 = dat.loc[:, f"PayCum{dev_year + 1:02}"].values
     dat_y = dat_c1 / np.sqrt(dat_c0)
@@ -238,11 +230,11 @@ def fit_model_zero(df, ay):
 
 def main(path):
     print("Reading data...")
-    df = read_data(path)
+    df, development_length = read_data(path)
 
     print("Computing per-LoB triangles...")
     lob_triangles = []
-    for lob in range(1, 5):
+    for lob in range(1, df.LoB.max() + 1):
         current_triangle = compute_triangle(df[df.LoB == lob])
         current_triangle.to_csv(f"triangle_lob{lob}", index=False)
         lob_triangles.append(current_triangle)
@@ -250,8 +242,8 @@ def main(path):
 
     print("Training models...")
     models = []
-    for dev_year in range(12):
-        current_model = fit_model_nonzero(df, dev_year, 20, 100, 10000)
+    for dev_year in range(development_length - 1):
+        current_model = fit_model_nonzero(df, dev_year, 20, False, 100, 10000)
         current_model.save(f"model{dev_year}")
         models.append(current_model)
 
