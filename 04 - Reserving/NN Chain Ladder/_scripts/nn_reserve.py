@@ -1,3 +1,4 @@
+import click
 import numpy as np
 import pandas as pd
 import sys
@@ -5,6 +6,8 @@ import sys
 from tensorflow.keras import Model, backend, initializers
 from tensorflow.keras.layers import Dense, Input, Lambda, Multiply, concatenate
 from tensorflow.keras.layers.experimental import preprocessing
+
+EXPLANATORY_COLUMNS = ["AQ", "age", "LoB", "cc", "inj_part"]
 
 
 def read_data(path):
@@ -44,12 +47,7 @@ def read_data(path):
     return simulated_data, development_length
 
 
-def compute_triangle(df):
-    # Determine the development length
-    development_length = len(
-        list(filter(lambda col: col.startswith("PayCum"), df.columns))
-    )
-
+def compute_triangle(df, development_length):
     # Group and mask values 'in the future'
     grouped = (
         df[["AY"] + [f"PayCum{j:02}" for j in range(development_length)]]
@@ -63,19 +61,15 @@ def compute_triangle(df):
     return grouped
 
 
-def predict_cl(triangle):
+def predict_cl(triangle, development_length):
     """
     Compute predictions from the Chain Ladder method. This function assumes
     I = J.
 
     :param triangle: Claim triangle computed with ``compute_triangle``.
+    :param development_length: Maximum development periods.
     :return:
     """
-    # Determine accident years and development length
-    development_length = len(
-        list(filter(lambda col: col.startswith("PayCum"), triangle.columns))
-    )
-
     # Compute development factors
     f_list = []
     for j in range(development_length - 1):
@@ -95,23 +89,27 @@ def predict_cl(triangle):
 
 
 def preprocess_data(df):
+    other_columns = set(df.columns).difference(EXPLANATORY_COLUMNS)
+    other_data = df[other_columns]
+    explanatory_data = df[EXPLANATORY_COLUMNS]
+
     # Apply one-hot-encoding
-    df_preproc = pd.get_dummies(
-        df,
+    preproc_data = pd.get_dummies(
+        explanatory_data,
         columns=["LoB", "cc", "inj_part"],
         sparse=True,
         drop_first=True
     )
 
     # Apply min-max scaling
-    max_numerical = df_preproc[["AQ", "age"]].max(axis=0)
-    min_numerical = df_preproc[["AQ", "age"]].min(axis=0)
-    df_preproc[["AQ", "age"]] = (
-        2 * (df_preproc[["AQ", "age"]] - min_numerical)
+    max_numerical = preproc_data[["AQ", "age"]].max(axis=0)
+    min_numerical = preproc_data[["AQ", "age"]].min(axis=0)
+    preproc_data[["AQ", "age"]] = (
+        2 * (preproc_data[["AQ", "age"]] - min_numerical)
         / (max_numerical - min_numerical) - 1
     )
 
-    return df_preproc
+    return pd.concat([preproc_data, other_data], axis=1)
 
 
 def build_nn(q, dat_x=None):
@@ -152,31 +150,30 @@ def build_nn(q, dat_x=None):
     return model
 
 
+def train_test_split(df, dev_year, development_length):
+    # Compute logical pd.Series for train/test filtering
+    logical_train = (
+        (df[f"PayCum{dev_year:02}"] > 0)
+        & (df.AY + dev_year < df.AY.max())
+    )
+
+    # Split and drop redundant column
+    cols_to_drop = ["AY"] + [f"Pay{j:02}" for j in range(development_length)]
+    df_train = df.loc[logical_train, :].drop(cols_to_drop, axis=1)
+    df_test = df.loc[~logical_train, :].drop(cols_to_drop, axis=1)
+
+    return df_train, df_test
+
+
 def fit_model_nonzero(df, dev_year, q, per_batch_preproc, epochs, batch_size):
-    # Determine accident years and development length
-    development_length = len(
-        list(filter(lambda col: col.startswith("PayCum"), df.columns))
-    )
-
-    # Prepare training data
-    dat = (
-        df.loc[
-            (df[f"PayCum{dev_year:02}"] > 0)
-            & (df.AY + dev_year < df.AY.max()), :
-        ]
-        .drop(
-            ["AY"]
-            + [f"Pay{j:02}" for j in range(development_length)],
-            axis=1
-        )
-    )
-
     if per_batch_preproc:
-        dat_x = dat.iloc[:, :5].values
+        dat_x = df.loc[:, EXPLANATORY_COLUMNS].values
     else:
-        dat_x = preprocess_data(dat.iloc[:, :5]).values
-    dat_c0 = dat.loc[:, f"PayCum{dev_year:02}"].values
-    dat_c1 = dat.loc[:, f"PayCum{dev_year + 1:02}"].values
+        dat_x = df.filter(
+            regex="^({})".format("|".join(EXPLANATORY_COLUMNS))
+        ).values
+    dat_c0 = df.loc[:, f"PayCum{dev_year:02}"].values
+    dat_c1 = df.loc[:, f"PayCum{dev_year + 1:02}"].values
     dat_y = dat_c1 / np.sqrt(dat_c0)
     dat_w = np.sqrt(dat_c0)
 
@@ -228,29 +225,39 @@ def fit_model_zero(df, ay):
     return np.concatenate((np.zeros(hist_end - ay + 1), np.cumprod(g)))
 
 
-def main(path):
-    print("Reading data...")
+@click.command()
+@click.option("--per-batch-preproc", is_flag=True)
+@click.argument("path")
+def main(per_batch_preproc, path):
+    click.echo("Reading data...")
     df, development_length = read_data(path)
 
-    print("Computing per-LoB triangles...")
+    click.echo("Computing per-LoB triangles...")
     lob_triangles = []
     for lob in range(1, df.LoB.max() + 1):
-        current_triangle = compute_triangle(df[df.LoB == lob])
+        current_triangle = compute_triangle(
+            df[df.LoB == lob], development_length
+        )
         current_triangle.to_csv(f"triangle_lob{lob}", index=False)
         lob_triangles.append(current_triangle)
         print(current_triangle)
 
-    print("Training models...")
+    click.echo("Training models...")
     models = []
+    if per_batch_preproc:
+        df = preprocess_data(df)
     for dev_year in range(development_length - 1):
-        current_model = fit_model_nonzero(df, dev_year, 20, False, 100, 10000)
+        dy_train, dy_test = train_test_split(df, dev_year, development_length)
+        current_model = fit_model_nonzero(
+            dy_train, dev_year, 20, per_batch_preproc, 100, 10000
+        )
         current_model.save(f"model{dev_year}")
         models.append(current_model)
 
-    print("Predicting outstanding claims...")
+    click.echo("Predicting outstanding claims...")
 
-    print("Finish")
+    click.echo("Finish")
 
 
 if __name__ == "__main__":
-    main(sys.argv[1])
+    main()
