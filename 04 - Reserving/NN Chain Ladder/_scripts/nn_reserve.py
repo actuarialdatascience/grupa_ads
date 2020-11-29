@@ -244,7 +244,7 @@ def main(per_batch_preproc, path):
 
     click.echo("Training models...")
     models = []
-    if per_batch_preproc:
+    if not per_batch_preproc:
         df = preprocess_data(df)
     for dev_year in range(development_length - 1):
         dy_train, dy_test = train_test_split(df, dev_year, development_length)
