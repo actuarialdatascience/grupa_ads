@@ -208,11 +208,10 @@ def fit_model_zero(df, ay):
     development_length = len(
         list(filter(lambda col: col.startswith("PayCum"), df.columns))
     )
-    hist_end = df.AY.max()
 
     df_curr_ay = df[df['AY'] < ay]
-    remain = development_length - (hist_end - ay)
-    labels = [f"PayCum{(hist_end - ay + s):02}" for s in range(remain)]
+    remain = development_length - (df.AY.max() - ay)
+    labels = [f"PayCum{(df.AY.max() - ay + s):02}" for s in range(remain)]
 
     df_star = df_curr_ay[df_curr_ay[labels[0]] == 0]
     g = []
@@ -221,12 +220,21 @@ def fit_model_zero(df, ay):
         if m == 0:
             b = df[labels[0]].sum()
         else:
-            b = df_star[labels[m]].s
-        g.append(a / b)
+            b = df_star[labels[m]].sum()
+        g.append(a / b if b > 0 else 1)
         # narrowing down the data set, in line with formulas in the paper
         df_star = df_star[df_star['AY'] < ay - m - 1]
 
-    return np.concatenate((np.zeros(hist_end - ay + 1), np.cumprod(g)))
+    return np.prod(g if g != [] else 0)
+
+
+def predict_zero_model(df, development_length, lob, model):
+    extract_columns = ['AY'] \
+                      + [f"PayCum{j:02}" for j in range(development_length)]
+    tr = df[df.LoB == lob].loc[:, extract_columns].groupby('AY').sum()
+    tr_diag = np.diag(np.fliplr(tr))
+    current_zero = tr_diag * model
+    return current_zero
 
 
 @click.command()
@@ -244,11 +252,21 @@ def main(per_batch_preproc, path):
         )
         current_cl_result = predict_cl(current_triangle, development_length)
         current_triangle.loc[:, 'CL'] = current_cl_result
-        current_triangle.to_csv(f"triangle_lob{lob}.csv")
         lob_triangles.append(current_triangle)
-        print(current_triangle)
 
-    click.echo("Training models...")
+    print("Training and predicting zero models...")
+    for lob in range(1, df.LoB.max() + 1):
+        models_zero_current_lob = []
+        for accident_year in range(df.AY.min(), df.AY.max() + 1):
+            current_model = fit_model_zero(df[df.LoB == lob], accident_year)
+            models_zero_current_lob.append(current_model)
+        current_zero_pred = predict_zero_model(df, development_length,
+                                               lob, models_zero_current_lob)
+        lob_triangles[lob - 1].loc[:, 'NN_zero'] = current_zero_pred
+        lob_triangles[lob - 1].to_csv(f"triangle_lob{lob}.csv")
+        print(lob_triangles[lob - 1])
+
+    click.echo("Training nonzero models...")
     models = []
     if not per_batch_preproc:
         df = preprocess_data(df)
