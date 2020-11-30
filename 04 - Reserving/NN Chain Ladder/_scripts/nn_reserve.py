@@ -243,6 +243,7 @@ def predict_zero_model(df, development_length, lob, model):
 def main(per_batch_preproc, path):
     click.echo("Reading data...")
     df, development_length = read_data(path)
+    lob_col = df['LoB']
 
     click.echo("Computing per-LoB triangles...")
     lob_triangles = []
@@ -254,7 +255,7 @@ def main(per_batch_preproc, path):
         current_triangle.loc[:, 'CL'] = current_cl_result
         lob_triangles.append(current_triangle)
 
-    print("Training and predicting zero models...")
+    click.echo("Training and predicting zero models...")
     for lob in range(1, df.LoB.max() + 1):
         models_zero_current_lob = []
         for accident_year in range(df.AY.min(), df.AY.max() + 1):
@@ -279,7 +280,46 @@ def main(per_batch_preproc, path):
         models.append(current_model)
 
     click.echo("Predicting outstanding claims...")
+    # Starting with fully available claim amount as of 0 - development year
+    next_dev_year = df['PayCum00'].copy()
+    for dev_year in range(development_length - 1):
+        current_dev_year = next_dev_year
+        indexes_to_update = (df.AY + dev_year >= df.AY.max())
+        dat_x = extract_dat_x(df.loc[indexes_to_update, :], per_batch_preproc)
+        dat_c0 = current_dev_year[indexes_to_update]
+        dat_w = np.sqrt(dat_c0)
+        pred = models[dev_year].predict([dat_x, dat_w]).flatten() * dat_w
+        next_dev_year = df[f"PayCum{dev_year + 1:02}"].copy()
+        next_dev_year[indexes_to_update] = pred
 
+    # Preparing DataFrame with results of non-zero claims predictions
+    ret = pd.DataFrame(next_dev_year.rename('Ultimate'))
+    ret['AY'] = df['AY']
+    ret['LoB'] = lob_col
+
+    # Initializing list with aggregate results per LoB
+    aggregate_results = []
+
+    click.echo("Combining results...")
+    for lob in range(1, lob_col.max() + 1):
+        ret_current_lob = ret.loc[ret.LoB == lob, :]
+        tr_current_lob = lob_triangles[lob - 1]
+        nonzero_pred = ret_current_lob.groupby('AY').agg(sum)['Ultimate']
+
+        tr_current_lob.loc[:, 'NN_nonzero'] = nonzero_pred
+        tr_current_lob.loc[:, 'NN'] = (
+                tr_current_lob.loc[:, ['NN_nonzero', 'NN_zero']].sum(axis=1)
+        )
+#        tr_current_lob.drop(['NN_nonzero', 'NN_zero'], axis=1, inplace=True)
+        tr_current_lob.to_csv(f"triangle_lob{lob}.csv")
+        print(tr_current_lob)
+
+        click.echo("Results for LoB " + str(lob) + ":")
+        print(tr_current_lob[['C_i,J', 'CL', 'NN']].sum())
+        aggregate_results.append(tr_current_lob[['C_i,J', 'CL', 'NN']].sum())
+
+    click.echo("Total results:")
+    print(pd.concat(aggregate_results, axis=1).agg(sum, axis=1))
     click.echo("Finish")
 
 
