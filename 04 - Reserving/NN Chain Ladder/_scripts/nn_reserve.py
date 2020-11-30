@@ -79,13 +79,13 @@ def predict_cl(triangle, development_length):
 
     # Compute predicted outstanding claims
     outstanding_claims = []
-    for j in range(development_length - 1):
+    for j in range(development_length):
         accumulated_factor = np.prod(f_list[j:])
         outstanding_claims.append(
             triangle.iloc[development_length - 1 - j, j] * accumulated_factor
         )
 
-    return pd.Series(outstanding_claims[::-1], triangle.index[1:])
+    return pd.Series(outstanding_claims[::-1], triangle.index)
 
 
 def preprocess_data(df):
@@ -165,13 +165,17 @@ def train_test_split(df, dev_year, development_length):
     return df_train, df_test
 
 
-def fit_model_nonzero(df, dev_year, q, per_batch_preproc, epochs, batch_size):
+def extract_dat_x(df, per_batch_preproc):
     if per_batch_preproc:
-        dat_x = df.loc[:, EXPLANATORY_COLUMNS].values
+        return df.loc[:, EXPLANATORY_COLUMNS].values
     else:
-        dat_x = df.filter(
+        return df.filter(
             regex="^({})".format("|".join(EXPLANATORY_COLUMNS))
         ).values
+
+
+def fit_model_nonzero(df, dev_year, q, per_batch_preproc, epochs, batch_size):
+    dat_x = extract_dat_x(df, per_batch_preproc)
     dat_c0 = df.loc[:, f"PayCum{dev_year:02}"].values
     dat_c1 = df.loc[:, f"PayCum{dev_year + 1:02}"].values
     dat_y = dat_c1 / np.sqrt(dat_c0)
@@ -238,13 +242,15 @@ def main(per_batch_preproc, path):
         current_triangle = compute_triangle(
             df[df.LoB == lob], development_length
         )
-        current_triangle.to_csv(f"triangle_lob{lob}", index=False)
+        current_cl_result = predict_cl(current_triangle, development_length)
+        current_triangle.loc[:, 'CL'] = current_cl_result
+        current_triangle.to_csv(f"triangle_lob{lob}.csv")
         lob_triangles.append(current_triangle)
         print(current_triangle)
 
     click.echo("Training models...")
     models = []
-    if per_batch_preproc:
+    if not per_batch_preproc:
         df = preprocess_data(df)
     for dev_year in range(development_length - 1):
         dy_train, dy_test = train_test_split(df, dev_year, development_length)
