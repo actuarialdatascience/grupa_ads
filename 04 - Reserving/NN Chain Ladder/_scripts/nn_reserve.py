@@ -3,7 +3,8 @@ import numpy as np
 import pandas as pd
 import sys
 
-from tensorflow.keras import Model, backend, initializers
+from tensorflow.keras import Model, backend
+from tensorflow.keras.initializers import Zeros, Ones, Constant
 from tensorflow.keras.layers import Dense, Input, Lambda, Multiply, concatenate
 from tensorflow.keras.layers.experimental import preprocessing
 
@@ -112,7 +113,7 @@ def preprocess_data(df):
     return pd.concat([preproc_data, other_data], axis=1)
 
 
-def build_nn(q, dat_x=None):
+def build_nn(q, initialize_cl, cl_df, dat_x=None):
     if dat_x is not None and dat_x.shape[1] == 5:
         features = Input(shape=(5, ), dtype="int32")
 
@@ -135,12 +136,18 @@ def build_nn(q, dat_x=None):
         features = Input(shape=(dat_x.shape[1], ))
         hidden_layer = Dense(units=q, activation='tanh')(features)
 
-    output_layer = Dense(units=1, activation=backend.exp)(hidden_layer)
+    if not initialize_cl:
+        output_layer = Dense(units=1, activation=backend.exp)(hidden_layer)
+    else:
+        output_layer = Dense(units=1, activation=backend.exp,
+                             bias_initializer=Constant(value=cl_df),
+                             kernel_initializer=Zeros()
+                             )(hidden_layer)
 
     volumes = Input(shape=(1, ))
     offset_layer = Dense(units=1, activation='linear',
                          use_bias=False, trainable=False,
-                         kernel_initializer=initializers.Ones())(volumes)
+                         kernel_initializer=Ones())(volumes)
 
     merged = Multiply()([output_layer, offset_layer])
 
@@ -174,17 +181,19 @@ def extract_dat_x(df, per_batch_preproc):
         ).values
 
 
-def fit_model_nonzero(df, dev_year, q, per_batch_preproc, epochs, batch_size):
+def fit_model_nonzero(df, dev_year, q, per_batch_preproc,
+                      epochs, batch_size, initialize_cl):
     dat_x = extract_dat_x(df, per_batch_preproc)
     dat_c0 = df.loc[:, f"PayCum{dev_year:02}"].values
     dat_c1 = df.loc[:, f"PayCum{dev_year + 1:02}"].values
     dat_y = dat_c1 / np.sqrt(dat_c0)
     dat_w = np.sqrt(dat_c0)
+    cl_df = np.log(dat_c1.sum() / dat_c0.sum())
 
     ################
     # Define network
     ################
-    model = build_nn(q, dat_x)
+    model = build_nn(q, initialize_cl, cl_df, dat_x)
 
     # Fit network
     model.fit([dat_x, dat_w], dat_y,
@@ -239,8 +248,9 @@ def predict_zero_model(df, development_length, lob, model):
 
 @click.command()
 @click.option("--per-batch-preproc", is_flag=True)
+@click.option("--initialize-cl", is_flag=True)
 @click.argument("path")
-def main(per_batch_preproc, path):
+def main(per_batch_preproc, initialize_cl, path):
     click.echo("Reading data...")
     df, development_length = read_data(path)
     lob_col = df['LoB']
@@ -274,7 +284,8 @@ def main(per_batch_preproc, path):
     for dev_year in range(development_length - 1):
         dy_train, dy_test = train_test_split(df, dev_year, development_length)
         current_model = fit_model_nonzero(
-            dy_train, dev_year, 20, per_batch_preproc, 100, 10000
+            dy_train, dev_year, 20, per_batch_preproc, 100, 10000,
+            initialize_cl
         )
         current_model.save(f"model{dev_year}")
         models.append(current_model)
