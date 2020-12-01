@@ -274,7 +274,6 @@ def main(per_batch_preproc, initialize_cl, path):
         current_zero_pred = predict_zero_model(df, development_length,
                                                lob, models_zero_current_lob)
         lob_triangles[lob - 1].loc[:, 'NN_zero'] = current_zero_pred
-        lob_triangles[lob - 1].to_csv(f"triangle_lob{lob}.csv")
         print(lob_triangles[lob - 1])
 
     click.echo("Training nonzero models...")
