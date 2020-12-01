@@ -3,7 +3,8 @@ import numpy as np
 import pandas as pd
 import sys
 
-from tensorflow.keras import Model, backend, initializers
+from tensorflow.keras import Model, backend
+from tensorflow.keras.initializers import Zeros, Ones, Constant
 from tensorflow.keras.layers import Dense, Input, Lambda, Multiply, concatenate
 from tensorflow.keras.layers.experimental import preprocessing
 
@@ -112,7 +113,7 @@ def preprocess_data(df):
     return pd.concat([preproc_data, other_data], axis=1)
 
 
-def build_nn(q, dat_x=None):
+def build_nn(q, initialize_cl, cl_df, dat_x=None):
     if dat_x is not None and dat_x.shape[1] == 5:
         features = Input(shape=(5, ), dtype="int32")
 
@@ -135,12 +136,18 @@ def build_nn(q, dat_x=None):
         features = Input(shape=(dat_x.shape[1], ))
         hidden_layer = Dense(units=q, activation='tanh')(features)
 
-    output_layer = Dense(units=1, activation=backend.exp)(hidden_layer)
+    if not initialize_cl:
+        output_layer = Dense(units=1, activation=backend.exp)(hidden_layer)
+    else:
+        output_layer = Dense(units=1, activation=backend.exp,
+                             bias_initializer=Constant(value=cl_df),
+                             kernel_initializer=Zeros()
+                             )(hidden_layer)
 
     volumes = Input(shape=(1, ))
     offset_layer = Dense(units=1, activation='linear',
                          use_bias=False, trainable=False,
-                         kernel_initializer=initializers.Ones())(volumes)
+                         kernel_initializer=Ones())(volumes)
 
     merged = Multiply()([output_layer, offset_layer])
 
@@ -174,17 +181,19 @@ def extract_dat_x(df, per_batch_preproc):
         ).values
 
 
-def fit_model_nonzero(df, dev_year, q, per_batch_preproc, epochs, batch_size):
+def fit_model_nonzero(df, dev_year, q, per_batch_preproc,
+                      epochs, batch_size, initialize_cl):
     dat_x = extract_dat_x(df, per_batch_preproc)
     dat_c0 = df.loc[:, f"PayCum{dev_year:02}"].values
     dat_c1 = df.loc[:, f"PayCum{dev_year + 1:02}"].values
     dat_y = dat_c1 / np.sqrt(dat_c0)
     dat_w = np.sqrt(dat_c0)
+    cl_df = np.log(dat_c1.sum() / dat_c0.sum())
 
     ################
     # Define network
     ################
-    model = build_nn(q, dat_x)
+    model = build_nn(q, initialize_cl, cl_df, dat_x)
 
     # Fit network
     model.fit([dat_x, dat_w], dat_y,
@@ -208,11 +217,10 @@ def fit_model_zero(df, ay):
     development_length = len(
         list(filter(lambda col: col.startswith("PayCum"), df.columns))
     )
-    hist_end = df.AY.max()
 
     df_curr_ay = df[df['AY'] < ay]
-    remain = development_length - (hist_end - ay)
-    labels = [f"PayCum{(hist_end - ay + s):02}" for s in range(remain)]
+    remain = development_length - (df.AY.max() - ay)
+    labels = [f"PayCum{(df.AY.max() - ay + s):02}" for s in range(remain)]
 
     df_star = df_curr_ay[df_curr_ay[labels[0]] == 0]
     g = []
@@ -221,20 +229,31 @@ def fit_model_zero(df, ay):
         if m == 0:
             b = df[labels[0]].sum()
         else:
-            b = df_star[labels[m]].s
-        g.append(a / b)
+            b = df_star[labels[m]].sum()
+        g.append(a / b if b > 0 else 1)
         # narrowing down the data set, in line with formulas in the paper
         df_star = df_star[df_star['AY'] < ay - m - 1]
 
-    return np.concatenate((np.zeros(hist_end - ay + 1), np.cumprod(g)))
+    return np.prod(g if g != [] else 0)
+
+
+def predict_zero_model(df, development_length, lob, model):
+    extract_columns = ['AY'] \
+                      + [f"PayCum{j:02}" for j in range(development_length)]
+    tr = df[df.LoB == lob].loc[:, extract_columns].groupby('AY').sum()
+    tr_diag = np.diag(np.fliplr(tr))
+    current_zero = tr_diag * model
+    return current_zero
 
 
 @click.command()
 @click.option("--per-batch-preproc", is_flag=True)
+@click.option("--initialize-cl", is_flag=True)
 @click.argument("path")
-def main(per_batch_preproc, path):
+def main(per_batch_preproc, initialize_cl, path):
     click.echo("Reading data...")
     df, development_length = read_data(path)
+    lob_col = df['LoB']
 
     click.echo("Computing per-LoB triangles...")
     lob_triangles = []
@@ -244,24 +263,73 @@ def main(per_batch_preproc, path):
         )
         current_cl_result = predict_cl(current_triangle, development_length)
         current_triangle.loc[:, 'CL'] = current_cl_result
-        current_triangle.to_csv(f"triangle_lob{lob}.csv")
         lob_triangles.append(current_triangle)
-        print(current_triangle)
 
-    click.echo("Training models...")
+    click.echo("Training and predicting zero models...")
+    for lob in range(1, df.LoB.max() + 1):
+        models_zero_current_lob = []
+        for accident_year in range(df.AY.min(), df.AY.max() + 1):
+            current_model = fit_model_zero(df[df.LoB == lob], accident_year)
+            models_zero_current_lob.append(current_model)
+        current_zero_pred = predict_zero_model(df, development_length,
+                                               lob, models_zero_current_lob)
+        lob_triangles[lob - 1].loc[:, 'NN_zero'] = current_zero_pred
+        print(lob_triangles[lob - 1])
+
+    click.echo("Training nonzero models...")
     models = []
     if not per_batch_preproc:
         df = preprocess_data(df)
     for dev_year in range(development_length - 1):
         dy_train, dy_test = train_test_split(df, dev_year, development_length)
         current_model = fit_model_nonzero(
-            dy_train, dev_year, 20, per_batch_preproc, 100, 10000
+            dy_train, dev_year, 20, per_batch_preproc, 100, 10000,
+            initialize_cl
         )
         current_model.save(f"model{dev_year}")
         models.append(current_model)
 
     click.echo("Predicting outstanding claims...")
+    # Starting with fully available claim amount as of 0 - development year
+    next_dev_year = df['PayCum00'].copy()
+    for dev_year in range(development_length - 1):
+        current_dev_year = next_dev_year
+        indexes_to_update = (df.AY + dev_year >= df.AY.max())
+        dat_x = extract_dat_x(df.loc[indexes_to_update, :], per_batch_preproc)
+        dat_c0 = current_dev_year[indexes_to_update]
+        dat_w = np.sqrt(dat_c0)
+        pred = models[dev_year].predict([dat_x, dat_w]).flatten() * dat_w
+        next_dev_year = df[f"PayCum{dev_year + 1:02}"].copy()
+        next_dev_year[indexes_to_update] = pred
 
+    # Preparing DataFrame with results of non-zero claims predictions
+    ret = pd.DataFrame(next_dev_year.rename('Ultimate'))
+    ret['AY'] = df['AY']
+    ret['LoB'] = lob_col
+
+    # Initializing list with aggregate results per LoB
+    aggregate_results = []
+
+    click.echo("Combining results...")
+    for lob in range(1, lob_col.max() + 1):
+        ret_current_lob = ret.loc[ret.LoB == lob, :]
+        tr_current_lob = lob_triangles[lob - 1]
+        nonzero_pred = ret_current_lob.groupby('AY').agg(sum)['Ultimate']
+
+        tr_current_lob.loc[:, 'NN_nonzero'] = nonzero_pred
+        tr_current_lob.loc[:, 'NN'] = (
+                tr_current_lob.loc[:, ['NN_nonzero', 'NN_zero']].sum(axis=1)
+        )
+#        tr_current_lob.drop(['NN_nonzero', 'NN_zero'], axis=1, inplace=True)
+        tr_current_lob.to_csv(f"triangle_lob{lob}.csv")
+        print(tr_current_lob)
+
+        click.echo("Results for LoB " + str(lob) + ":")
+        print(tr_current_lob[['C_i,J', 'CL', 'NN']].sum())
+        aggregate_results.append(tr_current_lob[['C_i,J', 'CL', 'NN']].sum())
+
+    click.echo("Total results:")
+    print(pd.concat(aggregate_results, axis=1).agg(sum, axis=1))
     click.echo("Finish")
 
 
