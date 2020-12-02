@@ -56,8 +56,10 @@ def compute_triangle(df, development_length):
         .agg(sum)
     )
     ay_totals = grouped.values[:, -1].copy()
+    diagonal = np.diag(np.fliplr(grouped))
     grouped.loc[:, :] = np.triu(grouped.values[:, ::-1])[:, ::-1]
     grouped.loc[:, "C_i,J"] = ay_totals
+    grouped.loc[:, "Diagonal"] = diagonal
 
     return grouped
 
@@ -318,10 +320,22 @@ def main(per_batch_preproc, initialize_cl, path):
 
         tr_current_lob.loc[:, 'NN_nonzero'] = nonzero_pred
         tr_current_lob.loc[:, 'NN'] = (
-                tr_current_lob.loc[:, ['NN_nonzero', 'NN_zero']].sum(axis=1)
+            tr_current_lob.loc[:, ['NN_nonzero', 'NN_zero']].sum(axis=1)
+        )
+
+        tr_current_lob.loc[:, 'True_reserve'] = (
+            tr_current_lob.loc[:, 'C_i,J'] - tr_current_lob.loc[:, 'Diagonal']
+        )
+
+        tr_current_lob.loc[:, 'NN_reserve'] = (
+            tr_current_lob.loc[:, 'NN'] - tr_current_lob.loc[:, 'Diagonal']
+        )
+
+        tr_current_lob.loc[:, 'CL_reserve'] = (
+            tr_current_lob.loc[:, 'CL'] - tr_current_lob.loc[:, 'Diagonal']
         )
 #        tr_current_lob.drop(['NN_nonzero', 'NN_zero'], axis=1, inplace=True)
-        tr_current_lob.to_csv(f"triangle_lob{lob}.csv")
+        tr_current_lob.to_csv(f"triangle_lob{lob}.csv", decimal=',', sep=';')
         print(tr_current_lob)
 
         click.echo("Results for LoB " + str(lob) + ":")
