@@ -2,6 +2,7 @@ import click
 import numpy as np
 import pandas as pd
 import sys
+import matplotlib.pyplot as plt
 
 from tensorflow.keras import Model, backend
 from tensorflow.keras.initializers import Zeros, Ones, Constant
@@ -248,6 +249,21 @@ def predict_zero_model(df, development_length, lob, model):
     return current_zero
 
 
+def plot_by_variable(ret, variable, relative=False):
+    plot_temp = (
+        ret.loc[:, [variable, 'NN_Reserve', 'True_Reserve']]
+            .groupby(variable)
+            .agg(sum)
+    )
+    if relative:
+        get_nn_vs_true = (
+            lambda row:
+            pd.Series({'NN_to_True': row['NN_Reserve'] / row['True_Reserve']})
+        )
+        plot_temp = pd.DataFrame(plot_temp.apply(get_nn_vs_true, axis=1))
+    return plot_temp.plot.bar()
+
+
 @click.command()
 @click.option("--per-batch-preproc", is_flag=True)
 @click.option("--initialize-cl", is_flag=True)
@@ -256,6 +272,7 @@ def main(per_batch_preproc, initialize_cl, path):
     click.echo("Reading data...")
     df, development_length = read_data(path)
     ret = pd.DataFrame(df[EXPLANATORY_COLUMNS + ['AY']])
+    ay_max = df.AY.max()
 
     click.echo("Computing per-LoB triangles...")
     lob_triangles = []
@@ -307,7 +324,7 @@ def main(per_batch_preproc, initialize_cl, path):
     # Preparing DataFrame with results of non-zero claims predictions
     ret['NN_Ult'] = pd.DataFrame(next_dev_year.rename('Ultimate'))
     ret['Diagonal'] = df.apply(lambda row:
-                               row[f"PayCum{int(df.AY.max() - row['AY']):02}"],
+                               row[f"PayCum{int(ay_max - row['AY']):02}"],
                                axis=1)
     ret['True_Ult'] = df[f"PayCum{development_length - 1:02}"]
     ret.drop(ret[ret.Diagonal == 0].index, inplace=True)
@@ -340,7 +357,7 @@ def main(per_batch_preproc, initialize_cl, path):
         tr_current_lob.loc[:, 'CL_reserve'] = (
             tr_current_lob.loc[:, 'CL'] - tr_current_lob.loc[:, 'Diagonal']
         )
-#        tr_current_lob.drop(['NN_nonzero', 'NN_zero'], axis=1, inplace=True)
+
         tr_current_lob.to_csv(f"triangle_lob{lob}.csv", decimal=',', sep=';')
         print(tr_current_lob)
 
@@ -350,6 +367,14 @@ def main(per_batch_preproc, initialize_cl, path):
 
     click.echo("Total results:")
     print(pd.concat(aggregate_results, axis=1).agg(sum, axis=1))
+
+    click.echo("Charts")
+    variables = ['cc', 'age', 'LoB', 'AY', 'inj_part', 'cc']
+    for var in variables:
+        plot_by_variable(ret, var, relative=False)
+        plot_by_variable(ret, var, relative=True)
+    plt.show()
+
     click.echo("Finish")
 
 
