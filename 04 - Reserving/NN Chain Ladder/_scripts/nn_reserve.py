@@ -255,7 +255,8 @@ def predict_zero_model(df, development_length, lob, model):
 def main(per_batch_preproc, initialize_cl, path):
     click.echo("Reading data...")
     df, development_length = read_data(path)
-    lob_col = df['LoB']
+    ay_max = df.AY.max()
+    ret = pd.DataFrame(df[EXPLANATORY_COLUMNS + ['AY']])
 
     click.echo("Computing per-LoB triangles...")
     lob_triangles = []
@@ -305,18 +306,24 @@ def main(per_batch_preproc, initialize_cl, path):
         next_dev_year[indexes_to_update] = pred
 
     # Preparing DataFrame with results of non-zero claims predictions
-    ret = pd.DataFrame(next_dev_year.rename('Ultimate'))
-    ret['AY'] = df['AY']
-    ret['LoB'] = lob_col
+    ret['NN_Ult'] = pd.DataFrame(next_dev_year.rename('Ultimate'))
+    ret['Diagonal'] = df.apply(lambda row:
+                               row[f"PayCum{int(ay_max - row['AY']):02}"],
+                               axis=1)
+    ret['True_Ult'] = df[f"PayCum{development_length - 1:02}"]
+    ret.drop(ret[ret.Diagonal == 0].index, inplace=True)
+    ret['NN_Reserve'] = ret['NN_Ult'] - ret['Diagonal']
+    ret['True_Reserve'] = ret['True_Ult'] - ret['Diagonal']
+    ret.to_csv('Nonzero_results.csv', decimal=',', sep=';')
 
     # Initializing list with aggregate results per LoB
     aggregate_results = []
 
     click.echo("Combining results...")
-    for lob in range(1, lob_col.max() + 1):
+    for lob in range(1, ret.LoB.max() + 1):
         ret_current_lob = ret.loc[ret.LoB == lob, :]
         tr_current_lob = lob_triangles[lob - 1]
-        nonzero_pred = ret_current_lob.groupby('AY').agg(sum)['Ultimate']
+        nonzero_pred = ret_current_lob.groupby('AY').agg(sum)['NN_Ult']
 
         tr_current_lob.loc[:, 'NN_nonzero'] = nonzero_pred
         tr_current_lob.loc[:, 'NN'] = (
