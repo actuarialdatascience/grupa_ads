@@ -255,7 +255,6 @@ def predict_zero_model(df, development_length, lob, model):
 def main(per_batch_preproc, initialize_cl, path):
     click.echo("Reading data...")
     df, development_length = read_data(path)
-    ay_max = df.AY.max()
     ret = pd.DataFrame(df[EXPLANATORY_COLUMNS + ['AY']])
 
     click.echo("Computing per-LoB triangles...")
@@ -308,7 +307,7 @@ def main(per_batch_preproc, initialize_cl, path):
     # Preparing DataFrame with results of non-zero claims predictions
     ret['NN_Ult'] = pd.DataFrame(next_dev_year.rename('Ultimate'))
     ret['Diagonal'] = df.apply(lambda row:
-                               row[f"PayCum{int(ay_max - row['AY']):02}"],
+                               row[f"PayCum{int(df.AY.max() - row['AY']):02}"],
                                axis=1)
     ret['True_Ult'] = df[f"PayCum{development_length - 1:02}"]
     ret.drop(ret[ret.Diagonal == 0].index, inplace=True)
