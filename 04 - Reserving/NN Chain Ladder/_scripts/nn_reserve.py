@@ -8,6 +8,7 @@ from tensorflow.keras import Model, backend
 from tensorflow.keras.initializers import Zeros, Ones, Constant
 from tensorflow.keras.layers import Dense, Input, Lambda, Multiply, concatenate
 from tensorflow.keras.layers.experimental import preprocessing
+from tensorflow.keras.models import load_model
 
 EXPLANATORY_COLUMNS = ["AQ", "age", "LoB", "cc", "inj_part"]
 
@@ -199,7 +200,7 @@ def fit_model_nonzero(df, dev_year, q, per_batch_preproc,
     model = build_nn(q, initialize_cl, cl_df, dat_x)
 
     # Fit network
-    model.fit([dat_x, dat_w], dat_y,
+    model.fit([dat_x.astype('float32'), dat_w.astype('float32')], dat_y,
               epochs=epochs,
               batch_size=batch_size,
               validation_split=0.1)
@@ -317,7 +318,9 @@ def main(per_batch_preproc, initialize_cl, path):
         dat_x = extract_dat_x(df.loc[indexes_to_update, :], per_batch_preproc)
         dat_c0 = current_dev_year[indexes_to_update]
         dat_w = np.sqrt(dat_c0)
-        pred = models[dev_year].predict([dat_x, dat_w]).flatten() * dat_w
+        pred = models[dev_year].predict(
+            [dat_x.astype('float32'), dat_w.astype('float32')]
+        ).flatten() * dat_w
         next_dev_year = df[f"PayCum{dev_year + 1:02}"].copy()
         next_dev_year[indexes_to_update] = pred
 
